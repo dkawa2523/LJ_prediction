@@ -1,0 +1,9 @@
+model_artifact_dir: "runs/fp/lgbm_morgan_desc_v1"
+dataset_csv: "data/processed/dataset_with_lj.csv"
+
+input:
+  mode: "formula"  # formula / cas
+
+output:
+  out_dir: "runs/predict"
+  exp_name: "fp_predict"

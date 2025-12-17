@@ -1,0 +1,42 @@
+# Quick config for smoke tests / iteration (small model + separate cache).
+data:
+  dataset_csv: "data/processed/quick/dataset_with_lj.csv"
+  indices_dir: "data/processed/quick/indices"
+  sdf_dir: "data/raw/sdf_files"
+  target_col: "lj_epsilon_over_k_K"
+  cas_col: "CAS"
+  cache_dir: "data/processed/quick/cache/fp"
+
+featurizer:
+  fingerprint: "morgan"
+  morgan_radius: 2
+  n_bits: 1024
+  use_counts: false
+  add_descriptors: ["MolWt","TPSA","MolLogP"]
+
+preprocess:
+  impute_nan: "mean"
+  standardize: false
+
+model:
+  name: "lightgbm"
+  params:
+    n_estimators: 300
+    learning_rate: 0.08
+    num_leaves: 63
+    subsample: 0.8
+    colsample_bytree: 0.8
+    random_state: 42
+
+train:
+  seed: 42
+
+ad:
+  tanimoto_warn_threshold: 0.5
+  top_k: 5
+
+output:
+  run_dir: "runs/fp"
+  exp_name: "quick_lgbm_morgan_v1"
+  plots: false
+

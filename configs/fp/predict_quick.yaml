@@ -1,0 +1,9 @@
+model_artifact_dir: "runs/fp/quick_lgbm_morgan_v1"
+dataset_csv: "data/processed/quick/dataset_with_lj.csv"
+
+input:
+  mode: "cas"  # formula / cas
+
+output:
+  out_dir: "runs/predict"
+  exp_name: "fp_predict_quick"

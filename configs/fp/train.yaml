@@ -1,0 +1,40 @@
+data:
+  dataset_csv: "data/processed/dataset_with_lj.csv"
+  indices_dir: "data/processed/indices"
+  sdf_dir: "data/raw/sdf_files"
+  target_col: "lj_epsilon_over_k_K"
+  cas_col: "CAS"
+  cache_dir: "data/processed/cache/fp"
+
+featurizer:
+  fingerprint: "morgan"   # morgan / maccs / rdkit
+  morgan_radius: 2
+  n_bits: 2048
+  use_counts: false
+  add_descriptors: ["MolWt","TPSA","MolLogP","HBD","HBA","NumRotatableBonds","RingCount","AromaticRings"]
+
+preprocess:
+  impute_nan: "mean"
+  standardize: false
+
+model:
+  name: "lightgbm"      # rf / catboost / lightgbm / gpr
+  params:
+    n_estimators: 2000
+    learning_rate: 0.03
+    num_leaves: 64
+    subsample: 0.8
+    colsample_bytree: 0.8
+    random_state: 42
+
+train:
+  seed: 42
+
+ad:
+  tanimoto_warn_threshold: 0.5
+  top_k: 5
+
+output:
+  run_dir: "runs/fp"
+  exp_name: "lgbm_morgan_desc_v1"
+  plots: true
