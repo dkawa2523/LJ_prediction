@@ -1,0 +1,21 @@
+Using S90_artifacts_versioning and S95_tests_ci to verify the artifact/test contract requirements. Task 020 is still marked blocked in `work/tasks/020_artifact_contract_impl.md`, so I did not make code changes.
+
+**Change Plan**
+- Deferred until unblocked; intended file-level changes: `src/utils/artifacts.py` (new helpers), `scripts/train.py` (save `config.yaml`, `meta.json`, `metrics.json`, `model/`), `scripts/predict.py` (save `predictions.csv` + meta), `tests/contract/` (artifact contract tests).
+
+**Implementation**
+- No changes applied (blocked by task file).
+
+**Tests**
+- None added or run.
+
+**Verification**
+- Not run (blocked).
+
+**Compatibility Impact**
+- None.
+
+**Queue Update**
+- Not updated due to read-only sandbox; recommended change: set task `020` status to `blocked` in `work/queue.json` and copy the block reason from `work/tasks/020_artifact_contract_impl.md`.
+
+If 010/015 are truly complete and the output dir contract is now fixed, should I proceed? If yes, please update `work/tasks/020_artifact_contract_impl.md` to remove/resolve the block and rerun with write access.

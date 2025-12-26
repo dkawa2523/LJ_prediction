@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import pickle
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -9,14 +10,17 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 
-from src.common.config import dump_yaml, load_yaml
+from src.common.config import dump_yaml, load_config
+from src.common.feature_pipeline import GraphFeaturePipeline, save_feature_pipeline
+from src.common.meta import build_meta, save_meta
 from src.common.io import load_sdf_mol, read_csv, sdf_path_from_cas
-from src.common.metrics import regression_metrics
 from src.common.plots import save_learning_curve, save_parity_plot, save_residual_plot, save_hist
 from src.common.splitters import load_split_indices
 from src.common.utils import ensure_dir, get_logger, save_json, set_seed
-from src.gnn.featurizer_graph import GraphFeaturizerConfig, featurize_mol_to_pyg
-from src.gnn.models import GCNRegressor, MPNNRegressor
+from src.gnn.models import GCNRegressor, GINRegressor, MPNNRegressor
+from src.tasks import resolve_task
+from src.utils.artifacts import compute_dataset_hash
+from src.utils.validate_config import validate_config
 
 try:
     import torch
@@ -118,12 +122,8 @@ def _is_oom_error(e: BaseException) -> bool:
     return "out of memory" in s or "mps backend out of memory" in s
 
 
-def main() -> None:
-    ap = argparse.ArgumentParser(description="Train GNN model (PyTorch Geometric) for LJ parameter regression.")
-    ap.add_argument("--config", required=True, help="Path to configs/gnn/train.yaml")
-    args = ap.parse_args()
-
-    cfg = load_yaml(args.config)
+def run(cfg: Dict[str, Any]) -> Path:
+    validate_config(cfg)
     seed = int(cfg.get("train", {}).get("seed", 42))
     set_seed(seed)
 
@@ -131,17 +131,23 @@ def main() -> None:
     dataset_csv = Path(data_cfg.get("dataset_csv", "data/processed/dataset_with_lj.csv"))
     indices_dir = Path(data_cfg.get("indices_dir", "data/processed/indices"))
     sdf_dir = Path(data_cfg.get("sdf_dir", "data/raw/sdf_files"))
-    target_col = str(data_cfg.get("target_col", "lj_epsilon_over_k_K"))
+    task_spec = resolve_task(cfg)
+    target_col = task_spec.primary_target()
+    if target_col is None:
+        raise ValueError("No target column resolved from task/data config.")
     cas_col = str(data_cfg.get("cas_col", "CAS"))
 
     out_cfg = cfg.get("output", {})
-    run_dir_root = Path(out_cfg.get("run_dir", "runs/gnn"))
-    exp_name = str(out_cfg.get("exp_name", "gnn_experiment"))
+    run_dir_root = Path(out_cfg.get("run_dir", "runs/train/gnn"))
+    experiment_cfg = cfg.get("experiment", {})
+    exp_name = str(out_cfg.get("exp_name", experiment_cfg.get("name", "gnn_experiment")))
     run_dir = ensure_dir(run_dir_root / exp_name)
     plots_dir = ensure_dir(run_dir / "plots")
     artifacts_dir = ensure_dir(run_dir / "artifacts")
 
     logger = get_logger("gnn_train", log_file=run_dir / "train.log")
+
+    dump_yaml(run_dir / "config.yaml", cfg)
 
     try:
         _require_pyg()
@@ -153,15 +159,19 @@ def main() -> None:
 
     df = read_csv(dataset_csv)
     indices = load_split_indices(indices_dir)
+    dataset_hash = compute_dataset_hash(dataset_csv, indices_dir)
+    model_version = str(out_cfg.get("model_version", exp_name))
+    meta = build_meta(
+        process_name=str(cfg.get("process", {}).get("name", "train")),
+        cfg=cfg,
+        dataset_hash=dataset_hash,
+        model_version=model_version,
+    )
+    save_meta(run_dir, meta)
 
     # Featurizer config
-    feat_cfg = cfg.get("featurizer", {})
-    gcfg = GraphFeaturizerConfig(
-        node_features=list(feat_cfg.get("node_features", ["atomic_num", "degree", "formal_charge", "aromatic", "num_h", "in_ring"])),
-        edge_features=list(feat_cfg.get("edge_features", ["bond_type", "conjugated", "aromatic"])),
-        use_3d_pos=bool(feat_cfg.get("use_3d_pos", True)),
-        add_global_descriptors=feat_cfg.get("add_global_descriptors", None),
-    )
+    pipeline = GraphFeaturePipeline.from_config(cfg)
+    gcfg = pipeline.graph_cfg
 
     def build_dataset(split_name: str) -> List[Any]:
         split_df = df.loc[indices[split_name]]
@@ -171,7 +181,7 @@ def main() -> None:
             if mol is None or not np.isfinite(y):
                 continue
             try:
-                data = featurize_mol_to_pyg(mol, y=y, cfg=gcfg)
+                data = pipeline.featurize_mol(mol, y=y)
                 data_list.append(data)
             except Exception:
                 continue
@@ -199,6 +209,15 @@ def main() -> None:
 
     if model_name == "gcn":
         model = GCNRegressor(in_dim=in_dim, hidden_dim=hidden_dim, num_layers=num_layers, dropout=dropout, global_dim=global_dim)
+    elif model_name == "gin":
+        model = GINRegressor(
+            in_dim=in_dim,
+            hidden_dim=hidden_dim,
+            num_layers=num_layers,
+            dropout=dropout,
+            global_dim=global_dim,
+            edge_dim=edge_dim,
+        )
     elif model_name == "mpnn":
         model = MPNNRegressor(
             in_dim=in_dim,
@@ -231,7 +250,7 @@ def main() -> None:
     batch_size = int(train_cfg.get("batch_size", 64))
     lr = float(train_cfg.get("lr", 1e-3))
     weight_decay = float(train_cfg.get("weight_decay", 1e-5))
-    loss_name = str(train_cfg.get("loss", "mse")).lower()
+    loss_name = task_spec.loss_name
 
     if loss_name == "mse":
         criterion = nn.MSELoss()
@@ -275,7 +294,7 @@ def main() -> None:
             return {}, np.array([]), np.array([])
         y_true = np.concatenate(ys)
         y_pred = np.concatenate(ps)
-        return regression_metrics(y_true, y_pred), y_true, y_pred
+        return task_spec.metrics_fn(y_true, y_pred), y_true, y_pred
 
     log_interval_sec = float(train_cfg.get("log_interval_sec", 30.0))
     show_pbar = bool(train_cfg.get("progress_bar", True))
@@ -373,11 +392,26 @@ def main() -> None:
         save_hist([d.y.item() for d in train_data], plots_dir / "y_train_hist.png", title="Target distribution (train)", xlabel=target_col)
 
     # Save artifacts
+    save_feature_pipeline(pipeline, artifacts_dir)
     with open(artifacts_dir / "graph_featurizer.pkl", "wb") as f:
         pickle.dump(gcfg, f)
     dump_yaml(run_dir / "config_snapshot.yaml", cfg)
     save_json(run_dir / "metrics_val.json", val_metrics)
     save_json(run_dir / "metrics_test.json", test_metrics)
+    save_json(
+        run_dir / "metrics.json",
+        {
+            "val": val_metrics,
+            "test": test_metrics,
+            "n_train": int(len(train_data)),
+            "n_val": int(len(val_data)),
+            "n_test": int(len(test_data)),
+            "seed": int(seed),
+        },
+    )
+    model_dir = ensure_dir(run_dir / "model")
+    torch.save(model.state_dict(), model_dir / "model.ckpt")
+    save_json(model_dir / "featurizer_state.json", {"config": asdict(gcfg)})
 
     # AD artifacts (for inference-time applicability domain)
     try:
@@ -416,6 +450,16 @@ def main() -> None:
 
     logger.info(f"Saved best model to {best_path}")
     logger.info("Done.")
+    return run_dir
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(description="Train GNN model (PyTorch Geometric) for LJ parameter regression.")
+    ap.add_argument("--config", required=True, help="Path to configs/gnn/train.yaml")
+    args = ap.parse_args()
+
+    cfg = load_config(args.config)
+    run(cfg)
 
 
 if __name__ == "__main__":

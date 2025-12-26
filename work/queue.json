@@ -1,0 +1,266 @@
+{
+  "version": 1,
+  "updated_at": "2025-12-26T21:17:23.826871Z",
+  "policy": {
+    "priority_order": [
+      "P0",
+      "P1",
+      "P2",
+      "P3"
+    ],
+    "status_order": [
+      "todo",
+      "in_progress",
+      "blocked",
+      "done"
+    ],
+    "auto_set_in_progress_on_next": true
+  },
+  "tasks": [
+    {
+      "id": "000",
+      "priority": "P0",
+      "status": "done",
+      "title": "devkit導入（docs/work/codex/agentskills）",
+      "path": "work/tasks/000_bootstrap_devkit.md",
+      "skills": [
+        "S00_repo_orientation"
+      ],
+      "contracts": [
+        "docs/00_INVARIANTS.md"
+      ]
+    },
+    {
+      "id": "015",
+      "priority": "P0",
+      "status": "done",
+      "title": "Process単位のCLIエントリポイント整理（train/evaluate/predict/visualize 等）",
+      "path": "work/tasks/015_process_entrypoints.md",
+      "skills": [
+        "S10_hydra_config",
+        "S80_inference_cli_api",
+        "S95_tests_ci"
+      ],
+      "contracts": [
+        "docs/00_INVARIANTS.md",
+        "docs/10_PROCESS_CATALOG.md",
+        "docs/03_CONFIG_CONVENTIONS.md"
+      ],
+      "last_presented_at": "2025-12-25T14:29:22.100432Z"
+    },
+    {
+      "id": "010",
+      "priority": "P0",
+      "status": "done",
+      "title": "Hydra config の group 再整理",
+      "path": "work/tasks/010_reorganize_hydra_configs.md",
+      "skills": [
+        "S10_hydra_config",
+        "S95_tests_ci"
+      ],
+      "contracts": [
+        "docs/00_INVARIANTS.md",
+        "docs/03_CONFIG_CONVENTIONS.md",
+        "docs/10_PROCESS_CATALOG.md"
+      ]
+    },
+    {
+      "id": "011",
+      "priority": "P0",
+      "status": "done",
+      "title": "smoke 用 fixture データセットの追加",
+      "path": "work/tasks/011_smoke_fixture_dataset.md",
+      "skills": [
+        "S20_dataset_loader",
+        "S10_hydra_config",
+        "S95_tests_ci"
+      ],
+      "contracts": [
+        "docs/00_INVARIANTS.md",
+        "docs/02_DATA_CONTRACTS.md"
+      ]
+    },
+    {
+      "id": "020",
+      "priority": "P0",
+      "status": "done",
+      "depends_on": [
+        "010",
+        "015"
+      ],
+      "title": "Artifact 契約の実装",
+      "path": "work/tasks/020_artifact_contract_impl.md",
+      "skills": [
+        "S90_artifacts_versioning",
+        "S95_tests_ci"
+      ],
+      "contracts": [
+        "docs/00_INVARIANTS.md",
+        "docs/04_ARTIFACTS_AND_VERSIONING.md",
+        "docs/10_PROCESS_CATALOG.md"
+      ],
+      "started_at": "2025-12-25T15:21:42.003181Z",
+      "last_presented_at": "2025-12-26T13:32:47.627895Z"
+    },
+    {
+      "id": "025",
+      "priority": "P0",
+      "status": "done",
+      "title": "データ監査＆漏洩/重複検知（比較の信頼性確保）",
+      "path": "work/tasks/025_dataset_audit.md",
+      "skills": [
+        "S20_dataset_loader",
+        "S70_evaluator_metrics",
+        "S95_tests_ci"
+      ],
+      "contracts": [
+        "docs/00_INVARIANTS.md",
+        "docs/02_DATA_CONTRACTS.md",
+        "docs/04_ARTIFACTS_AND_VERSIONING.md",
+        "docs/10_PROCESS_CATALOG.md"
+      ],
+      "started_at": "2025-12-26T13:58:00.220629Z",
+      "last_presented_at": "2025-12-26T14:08:23.711710Z"
+    },
+    {
+      "id": "030",
+      "priority": "P0",
+      "status": "done",
+      "title": "FeaturePipeline 統一（train/infer skew排除）",
+      "path": "work/tasks/030_featurepipeline_unify.md",
+      "skills": [
+        "S40_featurizer",
+        "S30_preprocess_pipeline",
+        "S95_tests_ci"
+      ],
+      "contracts": [
+        "docs/00_INVARIANTS.md",
+        "docs/02_DATA_CONTRACTS.md",
+        "docs/10_PROCESS_CATALOG.md"
+      ],
+      "started_at": "2025-12-26T14:09:10.649486Z",
+      "last_presented_at": "2025-12-26T14:26:39.293855Z"
+    },
+    {
+      "id": "035",
+      "priority": "P0",
+      "status": "done",
+      "title": "split戦略の追加（random/scaffold/group、seed固定、漏洩防止）",
+      "path": "work/tasks/035_split_strategies.md",
+      "skills": [
+        "S20_dataset_loader",
+        "S10_hydra_config",
+        "S95_tests_ci"
+      ],
+      "contracts": [
+        "docs/00_INVARIANTS.md",
+        "docs/02_DATA_CONTRACTS.md",
+        "docs/03_CONFIG_CONVENTIONS.md",
+        "docs/04_ARTIFACTS_AND_VERSIONING.md"
+      ],
+      "started_at": "2025-12-26T14:27:29.824498Z",
+      "last_presented_at": "2025-12-26T14:47:01Z"
+    },
+    {
+      "id": "040",
+      "priority": "P1",
+      "status": "done",
+      "title": "新しい目的変数（物性）追加の枠組み",
+      "path": "work/tasks/040_add_new_property_task.md",
+      "skills": [
+        "S20_dataset_loader",
+        "S60_trainer_loop",
+        "S95_tests_ci"
+      ],
+      "contracts": [
+        "docs/00_INVARIANTS.md",
+        "docs/02_DATA_CONTRACTS.md"
+      ],
+      "started_at": "2025-12-26T15:05:12.338998Z",
+      "last_presented_at": "2025-12-26T15:05:12.339183Z"
+    },
+    {
+      "id": "050",
+      "priority": "P1",
+      "status": "done",
+      "title": "データ収集モジュール拡張設計（外部API）",
+      "path": "work/tasks/050_data_collection_module.md",
+      "skills": [
+        "S20_dataset_loader"
+      ],
+      "contracts": [
+        "docs/08_SECURITY_PRIVACY.md",
+        "docs/00_INVARIANTS.md"
+      ],
+      "started_at": "2025-12-26T15:17:53.403092Z",
+      "last_presented_at": "2025-12-26T15:17:53.403475Z"
+    },
+    {
+      "id": "060",
+      "priority": "P1",
+      "status": "done",
+      "title": "GNN 新モデル（例: GIN）追加",
+      "path": "work/tasks/060_add_gnn_model_gin.md",
+      "skills": [
+        "S50_model_plugin",
+        "S95_tests_ci"
+      ],
+      "contracts": [
+        "docs/00_INVARIANTS.md",
+        "docs/03_CONFIG_CONVENTIONS.md"
+      ],
+      "started_at": "2025-12-26T15:35:31.322697Z",
+      "last_presented_at": "2025-12-26T15:50:13.728307Z"
+    },
+    {
+      "id": "070",
+      "priority": "P2",
+      "status": "done",
+      "title": "事前学習埋め込み特徴量の導入（任意）",
+      "path": "work/tasks/070_add_pretrained_embeddings.md",
+      "skills": [
+        "S40_featurizer"
+      ],
+      "contracts": [
+        "docs/00_INVARIANTS.md"
+      ],
+      "started_at": "2025-12-26T15:52:56.655493Z",
+      "last_presented_at": "2025-12-26T21:03:29.847395Z"
+    },
+    {
+      "id": "075",
+      "priority": "P0",
+      "status": "done",
+      "title": "結果集計Process（leaderboard/比較レポート生成）",
+      "path": "work/tasks/075_leaderboard_process.md",
+      "skills": [
+        "S70_evaluator_metrics",
+        "S10_hydra_config",
+        "S95_tests_ci"
+      ],
+      "contracts": [
+        "docs/00_INVARIANTS.md",
+        "docs/04_ARTIFACTS_AND_VERSIONING.md",
+        "docs/10_PROCESS_CATALOG.md"
+      ],
+      "started_at": "2025-12-26T14:47:59.822828Z",
+      "last_presented_at": "2025-12-26T14:47:59.823069Z"
+    },
+    {
+      "id": "090",
+      "priority": "P2",
+      "status": "done",
+      "title": "CI/テスト整備",
+      "path": "work/tasks/090_ci_tests.md",
+      "skills": [
+        "S95_tests_ci"
+      ],
+      "contracts": [
+        "docs/06_TEST_POLICY.md",
+        "docs/00_INVARIANTS.md"
+      ],
+      "started_at": "2025-12-26T21:04:09.263043Z",
+      "last_presented_at": "2025-12-26T21:04:09.263175Z"
+    }
+  ]
+}

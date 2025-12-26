@@ -52,28 +52,28 @@
 - `data/processed/indices/{train,val,test}.txt`
 - `data/processed/dataset_config_snapshot.yaml`
 
-## 2) Fingerprint学習：`scripts/fp_train.py`
+## 2) Fingerprint学習：`scripts/train.py`
 
 - 特徴量：`src/fp/featurizer_fp.py` + `src/common/descriptors.py`
 - 学習器：`src/fp/models.py`
-- 成果物保存：`runs/fp/<exp_name>/...`
+- 成果物保存：`runs/train/fp/<exp_name>/...`
   - `artifacts/model.pkl`（モデル）
   - `artifacts/imputer.pkl`（欠損補完）
   - `artifacts/scaler.pkl`（標準化を有効にした場合）
   - `artifacts/ad.pkl`（AD用：訓練FP・元素集合）
 
-## 3) Fingerprint推論：`scripts/fp_predict.py`
+## 3) Fingerprint推論：`scripts/predict.py`
 
 - `configs/fp/predict.yaml` の `input.mode` に応じて
   - `formula`：CSVからCASを解決して推論（同一分子式で複数行ある場合は先頭を使用）
   - `cas`：CASを直接指定して推論
 
-## 4) GNN学習/推論（任意）：`scripts/gnn_train.py`, `scripts/gnn_predict.py`
+## 4) GNN学習/推論（任意）：`scripts/train.py`, `scripts/predict.py`
 
 - 依存：`torch`, `torch_geometric`
 - グラフ化：`src/gnn/featurizer_graph.py`
 - モデル：`src/gnn/models.py`
-- 成果物：`runs/gnn/<exp_name>/artifacts/model_best.pt` など
+- 成果物：`runs/train/gnn/<exp_name>/artifacts/model_best.pt` など
 
 ---
 

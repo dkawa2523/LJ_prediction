@@ -1,0 +1,582 @@
+Using S90_artifacts_versioning + S95_tests_ci to align artifact outputs and add contract tests.
+
+**Status**
+- `work/tasks/020_artifact_contract_impl.md` still marks this task blocked; queue shows 010/015 done but the task file is the SoT. Confirm whether to proceed/unblock.
+- Read-only sandbox prevents edits or updating `work/queue.json` in this session.
+
+**Change Plan (proposed)**
+- `src/utils/artifacts.py`: add hashing + meta/metrics/predictions helpers and logs dir creation.
+- `src/fp/train.py`, `src/gnn/train.py`: write contract artifacts (`model/`, `metrics.json`, expanded `meta.json`, `logs/`) while keeping legacy artifacts for compatibility.
+- `src/fp/predict.py`, `src/gnn/predict.py`: emit `predictions.csv` and include `model_version` in meta.
+- `tests/contract/test_artifact_contract.py`: add contract tests for meta/metrics/predictions.
+
+**Proposed Diff (not applied)**
+
+`src/utils/artifacts.py`
+```diff
+diff --git a/src/utils/artifacts.py b/src/utils/artifacts.py
+new file mode 100644
+index 0000000..abcdef0
+--- /dev/null
++++ b/src/utils/artifacts.py
+@@
++from __future__ import annotations
++
++import csv
++import hashlib
++import json
++import subprocess
++from datetime import datetime, timezone
++from pathlib import Path
++from typing import Any, Dict, Iterable, Optional, Sequence
++from uuid import uuid4
++
++from src.common.config import dump_yaml
++from src.common.utils import ensure_dir, load_json, save_json
++
++REQUIRED_META_KEYS = {
++    "run_id",
++    "process_name",
++    "created_at",
++    "git_sha",
++    "dataset_hash",
++    "config_hash",
++    "task_name",
++    "model_name",
++    "featureset_name",
++    "upstream_artifacts",
++    "tags",
++}
++
++REQUIRED_PRED_COLUMNS = {"sample_id", "y_pred"}
++
++
++def _utc_now_iso() -> str:
++    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
++
++
++def _stable_json(obj: Any) -> str:
++    return json.dumps(obj, sort_keys=True, default=str, ensure_ascii=True)
++
++
++def compute_config_hash(cfg: Dict[str, Any]) -> str:
++    data = _stable_json(cfg).encode("utf-8")
++    return hashlib.sha256(data).hexdigest()[:12]
++
++
++def _hash_paths(paths: Sequence[Path]) -> str:
++    h = hashlib.sha256()
++    seen = False
++    for path in paths:
++        if not path.exists():
++            continue
++        seen = True
++        h.update(path.name.encode("utf-8"))
++        with path.open("rb") as f:
++            for chunk in iter(lambda: f.read(1024 * 1024), b""):
++                h.update(chunk)
++    return h.hexdigest()[:12] if seen else "unknown"
++
++
++def compute_dataset_hash(dataset_csv: str | Path, indices_dir: str | Path | None = None) -> str:
++    paths: list[Path] = []
++    if dataset_csv:
++        paths.append(Path(dataset_csv))
++    if indices_dir:
++        idx_dir = Path(indices_dir)
++        if idx_dir.exists():
++            paths.extend(sorted(idx_dir.glob("*.txt")))
++            paths.extend(sorted(idx_dir.glob("*.json")))
++    return _hash_paths(paths)
++
++
++def _git_sha() -> Optional[str]:
++    try:
++        repo_root = Path(__file__).resolve().parents[2]
++        res = subprocess.run(
++            ["git", "rev-parse", "HEAD"],
++            cwd=repo_root,
++            capture_output=True,
++            text=True,
++            check=False,
++        )
++        sha = res.stdout.strip()
++        return sha if res.returncode == 0 and sha else None
++    except Exception:
++        return None
++
++
++def _coerce_tags(cfg: Dict[str, Any], tags: Optional[Iterable[str]]) -> list[str]:
++    out: list[str] = []
++    if tags:
++        out.extend(tags)
++    exp_tags = cfg.get("experiment", {}).get("tags")
++    if exp_tags:
++        out.extend(exp_tags)
++    cfg_tags = cfg.get("tags")
++    if cfg_tags:
++        out.extend(cfg_tags)
++    return [str(t) for t in out]
++
++
++def infer_featureset_name(cfg: Dict[str, Any]) -> str:
++    name = cfg.get("featureset_name")
++    if name:
++        return str(name)
++    feat = cfg.get("featurizer", {})
++    fp = feat.get("fingerprint")
++    if fp:
++        suffix = []
++        radius = feat.get("morgan_radius")
++        n_bits = feat.get("n_bits")
++        if radius is not None:
++            suffix.append(f"r{radius}")
++        if n_bits is not None:
++            suffix.append(f"b{n_bits}")
++        if feat.get("add_descriptors"):
++            suffix.append("desc")
++        return "_".join([str(fp)] + suffix) if suffix else str(fp)
++    if feat.get("node_features") or feat.get("edge_features"):
++        return "gnn_graph"
++    return "unknown"
++
++
++def build_meta(
++    cfg: Dict[str, Any],
++    process_name: str,
++    dataset_hash: Optional[str] = None,
++    config_hash: Optional[str] = None,
++    upstream_artifacts: Optional[Iterable[str]] = None,
++    tags: Optional[Iterable[str]] = None,
++    model_version: Optional[str] = None,
++    extra: Optional[Dict[str, Any]] = None,
++) -> Dict[str, Any]:
++    meta = {
++        "run_id": uuid4().hex,
++        "process_name": process_name,
++        "created_at": _utc_now_iso(),
++        "git_sha": _git_sha() or "unknown",
++        "dataset_hash": dataset_hash or "unknown",
++        "config_hash": config_hash or compute_config_hash(cfg),
++        "task_name": str(cfg.get("task", {}).get("name", "unknown")),
++        "model_name": str(cfg.get("model", {}).get("name", "unknown")),
++        "featureset_name": infer_featureset_name(cfg),
++        "upstream_artifacts": list(upstream_artifacts or []),
++        "tags": _coerce_tags(cfg, tags),
++    }
++    if model_version is not None:
++        meta["model_version"] = model_version
++    if extra:
++        meta.update(extra)
++    return meta
++
++
++def ensure_logs_dir(run_dir: str | Path) -> Path:
++    return ensure_dir(Path(run_dir) / "logs")
++
++
++def write_config(run_dir: str | Path, cfg: Dict[str, Any]) -> Path:
++    path = Path(run_dir) / "config.yaml"
++    dump_yaml(path, cfg)
++    return path
++
++
++def write_meta(run_dir: str | Path, meta: Dict[str, Any]) -> Path:
++    path = Path(run_dir) / "meta.json"
++    save_json(path, meta)
++    return path
++
++
++def load_meta(run_dir: str | Path) -> Dict[str, Any]:
++    path = Path(run_dir) / "meta.json"
++    if not path.exists():
++        return {}
++    return load_json(path)
++
++
++def write_metrics(run_dir: str | Path, metrics: Dict[str, Any], filename: str = "metrics.json") -> Path:
++    path = Path(run_dir) / filename
++    save_json(path, metrics)
++    return path
++
++
++def write_predictions_csv(run_dir: str | Path, rows: Sequence[Dict[str, Any]]) -> Path:
++    if not rows:
++        raise ValueError("predictions rows are empty")
++    missing = REQUIRED_PRED_COLUMNS - set(rows[0].keys())
++    if missing:
++        raise ValueError(f"predictions missing required columns: {sorted(missing)}")
++    path = Path(run_dir) / "predictions.csv"
++    with path.open("w", newline="", encoding="utf-8") as f:
++        writer = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
++        writer.writeheader()
++        writer.writerows(rows)
++    return path
+```
+
+`src/fp/train.py`
+```diff
+diff --git a/src/fp/train.py b/src/fp/train.py
+index 2f5c3d1..c7a4b22 100644
+--- a/src/fp/train.py
++++ b/src/fp/train.py
+@@
+-import argparse
+-import pickle
++import argparse
++import pickle
++from dataclasses import asdict
+@@
+-from src.common.config import dump_yaml, load_config
+-from src.common.meta import build_meta, save_meta
++from src.common.config import dump_yaml, load_config
+@@
+-from src.common.utils import ensure_dir, get_logger, save_json, set_seed
++from src.common.utils import ensure_dir, get_logger, save_json, set_seed
++from src.utils.artifacts import (
++    build_meta as build_artifact_meta,
++    compute_dataset_hash,
++    ensure_logs_dir,
++    write_config,
++    write_meta,
++    write_metrics,
++)
+@@
+-    plots_dir = ensure_dir(run_dir / "plots")
+-
+-    logger = get_logger("fp_train", log_file=run_dir / "train.log")
+-
+-    dump_yaml(run_dir / "config.yaml", cfg)
+-    save_meta(run_dir, build_meta(process_name=str(cfg.get("process", {}).get("name", "train"))))
++    plots_dir = ensure_dir(run_dir / "plots")
++    logs_dir = ensure_logs_dir(run_dir)
++
++    logger = get_logger("fp_train", log_file=logs_dir / "train.log")
++
++    write_config(run_dir, cfg)
++    dataset_hash = compute_dataset_hash(dataset_csv, indices_dir)
++    meta = build_artifact_meta(
++        cfg,
++        process_name=str(cfg.get("process", {}).get("name", "train")),
++        dataset_hash=dataset_hash,
++        upstream_artifacts=cfg.get("upstream_artifacts", []),
++    )
++    write_meta(run_dir, meta)
+@@
+-    with open(artifacts_dir / "ad.pkl", "wb") as f:
++    with open(artifacts_dir / "ad.pkl", "wb") as f:
+         pickle.dump(ad_artifact, f)
++
++    model_dir = ensure_dir(run_dir / "model")
++    with open(model_dir / "model.ckpt", "wb") as f:
++        pickle.dump(model, f)
++    preprocess_payload = {"imputer": imputer}
++    if scaler is not None:
++        preprocess_payload["scaler"] = scaler
++    with open(model_dir / "preprocess.pkl", "wb") as f:
++        pickle.dump(preprocess_payload, f)
++    save_json(model_dir / "featurizer_state.json", asdict(fp_cfg))
+@@
+-    save_json(run_dir / "metrics_val.json", metrics_val)
+-    save_json(run_dir / "metrics_test.json", metrics_test)
+-    dump_yaml(run_dir / "config_snapshot.yaml", cfg)
++    save_json(run_dir / "metrics_val.json", metrics_val)
++    save_json(run_dir / "metrics_test.json", metrics_test)
++    write_metrics(
++        run_dir,
++        {
++            "val": metrics_val,
++            "test": metrics_test,
++            "n_train": len(y_train),
++            "n_val": len(y_val),
++            "n_test": len(y_test),
++            "seed": seed,
++        },
++    )
++    dump_yaml(run_dir / "config_snapshot.yaml", cfg)
+```
+
+`src/gnn/train.py`
+```diff
+diff --git a/src/gnn/train.py b/src/gnn/train.py
+index 6a9f221..1e3e4b7 100644
+--- a/src/gnn/train.py
++++ b/src/gnn/train.py
+@@
+-import argparse
+-import pickle
++import argparse
++import pickle
++import shutil
++from dataclasses import asdict
+@@
+-from src.common.config import dump_yaml, load_config
+-from src.common.meta import build_meta, save_meta
++from src.common.config import dump_yaml, load_config
+@@
+-from src.common.utils import ensure_dir, get_logger, save_json, set_seed
++from src.common.utils import ensure_dir, get_logger, save_json, set_seed
++from src.utils.artifacts import (
++    build_meta as build_artifact_meta,
++    compute_dataset_hash,
++    ensure_logs_dir,
++    write_config,
++    write_meta,
++    write_metrics,
++)
+@@
+-    plots_dir = ensure_dir(run_dir / "plots")
+-    artifacts_dir = ensure_dir(run_dir / "artifacts")
+-
+-    logger = get_logger("gnn_train", log_file=run_dir / "train.log")
+-
+-    dump_yaml(run_dir / "config.yaml", cfg)
+-    save_meta(run_dir, build_meta(process_name=str(cfg.get("process", {}).get("name", "train"))))
++    plots_dir = ensure_dir(run_dir / "plots")
++    artifacts_dir = ensure_dir(run_dir / "artifacts")
++    logs_dir = ensure_logs_dir(run_dir)
++
++    logger = get_logger("gnn_train", log_file=logs_dir / "train.log")
++
++    write_config(run_dir, cfg)
++    dataset_hash = compute_dataset_hash(dataset_csv, indices_dir)
++    meta = build_artifact_meta(
++        cfg,
++        process_name=str(cfg.get("process", {}).get("name", "train")),
++        dataset_hash=dataset_hash,
++        upstream_artifacts=cfg.get("upstream_artifacts", []),
++    )
++    write_meta(run_dir, meta)
+@@
+-    with open(artifacts_dir / "graph_featurizer.pkl", "wb") as f:
+-        pickle.dump(gcfg, f)
+-    dump_yaml(run_dir / "config_snapshot.yaml", cfg)
+-    save_json(run_dir / "metrics_val.json", val_metrics)
+-    save_json(run_dir / "metrics_test.json", test_metrics)
++    with open(artifacts_dir / "graph_featurizer.pkl", "wb") as f:
++        pickle.dump(gcfg, f)
++    model_dir = ensure_dir(run_dir / "model")
++    shutil.copy2(best_path, model_dir / "model.ckpt")
++    save_json(model_dir / "featurizer_state.json", asdict(gcfg))
++    dump_yaml(run_dir / "config_snapshot.yaml", cfg)
++    save_json(run_dir / "metrics_val.json", val_metrics)
++    save_json(run_dir / "metrics_test.json", test_metrics)
++    write_metrics(
++        run_dir,
++        {
++            "val": val_metrics,
++            "test": test_metrics,
++            "n_train": len(train_data),
++            "n_val": len(val_data),
++            "n_test": len(test_data),
++            "seed": seed,
++        },
++    )
+```
+
+`src/fp/predict.py`
+```diff
+diff --git a/src/fp/predict.py b/src/fp/predict.py
+index 1d43d0f..a8efb05 100644
+--- a/src/fp/predict.py
++++ b/src/fp/predict.py
+@@
+-from src.common.config import dump_yaml, load_config
+-from src.common.meta import build_meta, save_meta
++from src.common.config import load_config
+@@
+-from src.common.utils import ensure_dir, get_logger, save_json
++from src.common.utils import ensure_dir, get_logger, save_json
++from src.utils.artifacts import (
++    build_meta as build_artifact_meta,
++    ensure_logs_dir,
++    infer_featureset_name,
++    load_meta,
++    write_config,
++    write_meta,
++    write_predictions_csv,
++)
+@@
+-    logger = get_logger("fp_predict", log_file=out_dir / "predict.log")
+-    dump_yaml(out_dir / "config.yaml", cfg)
+-    save_meta(
+-        out_dir,
+-        build_meta(
+-            process_name=str(cfg.get("process", {}).get("name", "predict")),
+-            upstream_artifacts=[str(model_artifact_dir)],
+-        ),
+-    )
++    logs_dir = ensure_logs_dir(out_dir)
++    logger = get_logger("fp_predict", log_file=logs_dir / "predict.log")
++    write_config(out_dir, cfg)
++    train_meta = load_meta(model_artifact_dir)
++    dataset_hash = train_meta.get("dataset_hash", "unknown")
++    model_version = train_meta.get("run_id", "unknown")
++    meta = build_artifact_meta(
++        cfg,
++        process_name=str(cfg.get("process", {}).get("name", "predict")),
++        dataset_hash=dataset_hash,
++        upstream_artifacts=[str(model_artifact_dir)],
++        model_version=model_version,
++        extra={
++            "task_name": train_cfg.get("task", {}).get("name", "unknown"),
++            "model_name": train_cfg.get("model", {}).get("name", "unknown"),
++            "featureset_name": infer_featureset_name(train_cfg),
++        },
++    )
++    write_meta(out_dir, meta)
+@@
+-    result = {
++    pred_row = {
++        "sample_id": cas,
++        "y_pred": pred,
++        "model_name": meta["model_name"],
++        "model_version": meta.get("model_version", model_version),
++        "dataset_hash": dataset_hash,
++        "run_id": meta["run_id"],
++    }
++    write_predictions_csv(out_dir, [pred_row])
++
++    result = {
+         "cas": cas,
+         "query": query,
+         "prediction": pred,
+         "resolve_meta": resolve_meta,
+         "ad": ad_res.to_dict(),
+         "feature_meta": meta,
+     }
+```
+
+`src/gnn/predict.py`
+```diff
+diff --git a/src/gnn/predict.py b/src/gnn/predict.py
+index a1c9b2d..0c84f7e 100644
+--- a/src/gnn/predict.py
++++ b/src/gnn/predict.py
+@@
+-from src.common.config import dump_yaml, load_config
+-from src.common.meta import build_meta, save_meta
++from src.common.config import load_config
+@@
+-from src.common.utils import ensure_dir, get_logger, save_json
++from src.common.utils import ensure_dir, get_logger, save_json
++from src.utils.artifacts import (
++    build_meta as build_artifact_meta,
++    ensure_logs_dir,
++    infer_featureset_name,
++    load_meta,
++    write_config,
++    write_meta,
++    write_predictions_csv,
++)
+@@
+-    logger = get_logger("gnn_predict", log_file=out_dir / "predict.log")
+-    dump_yaml(out_dir / "config.yaml", cfg)
+-    save_meta(
+-        out_dir,
+-        build_meta(
+-            process_name=str(cfg.get("process", {}).get("name", "predict")),
+-            upstream_artifacts=[str(model_artifact_dir)],
+-        ),
+-    )
++    logs_dir = ensure_logs_dir(out_dir)
++    logger = get_logger("gnn_predict", log_file=logs_dir / "predict.log")
++    write_config(out_dir, cfg)
++    train_meta = load_meta(model_artifact_dir)
++    dataset_hash = train_meta.get("dataset_hash", "unknown")
++    model_version = train_meta.get("run_id", "unknown")
++    meta = build_artifact_meta(
++        cfg,
++        process_name=str(cfg.get("process", {}).get("name", "predict")),
++        dataset_hash=dataset_hash,
++        upstream_artifacts=[str(model_artifact_dir)],
++        model_version=model_version,
++        extra={
++            "task_name": train_cfg.get("task", {}).get("name", "unknown"),
++            "model_name": train_cfg.get("model", {}).get("name", "unknown"),
++            "featureset_name": infer_featureset_name(train_cfg),
++        },
++    )
++    write_meta(out_dir, meta)
+@@
+-    result = {
++    pred_row = {
++        "sample_id": cas,
++        "y_pred": pred,
++        "model_name": meta["model_name"],
++        "model_version": meta.get("model_version", model_version),
++        "dataset_hash": dataset_hash,
++        "run_id": meta["run_id"],
++    }
++    write_predictions_csv(out_dir, [pred_row])
++
++    result = {
+         "cas": cas,
+         "query": query,
+         "prediction": pred,
+         "resolve_meta": resolve_meta,
+         "ad": None if ad_res is None else ad_res.to_dict(),
+     }
+```
+
+`tests/contract/test_artifact_contract.py`
+```diff
+diff --git a/tests/contract/test_artifact_contract.py b/tests/contract/test_artifact_contract.py
+new file mode 100644
+index 0000000..2b8d0c7
+--- /dev/null
++++ b/tests/contract/test_artifact_contract.py
+@@
++from pathlib import Path
++
++import pandas as pd
++
++from src.utils import artifacts
++
++
++def test_build_meta_includes_required_keys() -> None:
++    cfg = {
++        "task": {"name": "lj_epsilon"},
++        "model": {"name": "lightgbm"},
++        "featurizer": {"fingerprint": "morgan", "morgan_radius": 2, "n_bits": 2048},
++    }
++    meta = artifacts.build_meta(cfg, process_name="train", dataset_hash="dummyhash")
++
++    assert artifacts.REQUIRED_META_KEYS.issubset(meta.keys())
++
++
++def test_write_predictions_csv_contract(tmp_path: Path) -> None:
++    rows = [{"sample_id": "A", "y_pred": 1.23}]
++    path = artifacts.write_predictions_csv(tmp_path, rows)
++    df = pd.read_csv(path)
++
++    assert artifacts.REQUIRED_PRED_COLUMNS.issubset(df.columns)
++
++
++def test_write_metrics(tmp_path: Path) -> None:
++    metrics = {"val": {"rmse": 1.0}}
++    path = artifacts.write_metrics(tmp_path, metrics)
++
++    assert path.exists()
+```
+
+**Tests Added/Updated (proposed)**
+- `tests/contract/test_artifact_contract.py`
+
+**Verification Commands (proposed)**
+- `pytest tests/contract/test_artifact_contract.py`
+- `pytest -k artifact_contract`
+
+**Compatibility Impact**
+- New `model/` contract artifacts (`model.ckpt`, `preprocess.pkl`, `featurizer_state.json`) are added while legacy `artifacts/` outputs are kept; existing inference stays compatible.
+- `meta.json` now includes required keys plus `model_version` for predict; consumers should ignore unknown keys.
+- `predictions.csv` is added to predict outputs; existing `prediction_*.json` remains.
+- Train logs move to `logs/` (path change only).
+- Evaluate artifacts remain unchanged in this proposal; `metrics.json` for evaluate would still be missing until extended.
+
+**Queue Update**
+- Would set task 020 to `blocked` with the reason from `work/tasks/020_artifact_contract_impl.md`, but I cannot edit `work/queue.json` in read-only mode.
+
+If you want me to proceed, please confirm:
+1) Update/unblock task 020 (or explicitly allow proceeding despite the block).
+2) Provide a write-enabled session so I can apply the patch and run the tests.

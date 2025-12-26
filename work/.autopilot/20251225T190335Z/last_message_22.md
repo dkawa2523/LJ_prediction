@@ -1,0 +1,29 @@
+Using S90_artifacts_versioning and S95_tests_ci because this task is about artifact contract implementation plus contract tests.
+
+Task 020 is blocked per `work/tasks/020_artifact_contract_impl.md` (run dir standardization not confirmed). Even though `work/queue.json` shows 010/015 done, the task file is the source of truth. Also, the sandbox is read‑only, so I can’t apply code edits or update `work/queue.json`.
+
+**Change Plan (file unit)**
+- `src/utils/artifacts.py` add shared artifact save helpers.
+- `scripts/train.py` write `config.yaml`, `meta.json`, `metrics.json`, `model/model.ckpt`.
+- `scripts/predict.py` write `predictions.csv` + meta with `model_version`.
+- `tests/contract/test_artifact_contract.py` add contract checks for required files/keys.
+
+**Implementation**
+- Not implemented (blocked + read‑only).
+
+**Tests**
+- None added.
+
+**Verification Commands**
+- `pytest -k artifact_contract`
+
+**Compatibility Impact**
+- Pending unblock. Expected impact: new artifact files under run dirs; no CLI changes; config only if artifact output path needs a new setting.
+
+**Task Status Update**
+- Should set task 020 to `blocked` in `work/queue.json` with the reason from the task file. I can’t edit it in read‑only.
+
+If you want me to proceed, pick one:
+1) Update `work/tasks/020_artifact_contract_impl.md` to unblock (and optionally `work/queue.json`) and switch sandbox to `workspace-write`.
+2) Confirm the finalized artifact output directory convention from 010/015 so I can implement against it.
+3) Ask me to draft a concrete code diff plan without writing files.

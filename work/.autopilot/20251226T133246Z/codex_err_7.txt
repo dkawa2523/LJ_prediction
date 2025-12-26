@@ -1,0 +1,3719 @@
+OpenAI Codex v0.77.0 (research preview)
+--------
+workdir: /Users/kawahito/Desktop/LJ_prediction
+model: gpt-5.2-codex
+provider: openai
+approval: never
+sandbox: workspace-write [workdir, /tmp, $TMPDIR]
+reasoning effort: xhigh
+reasoning summaries: auto
+session id: 019b5b3c-daec-7260-84da-149f40216ac5
+--------
+user
+# ===== SESSION CONTEXT =====
+# Codex Session Context（毎回貼る短文）
+
+- このrepoは「化学構造（SDF/CSV）→ 物性予測」を行う CLI/Hydra 基盤。
+- 不変条件は docs/00_INVARIANTS.md が唯一の正。
+- 今回の作業範囲・要件は work/tasks/<TASK>.md が唯一の正。
+- 学習と推論の特徴量/前処理は必ず一致させる（skew禁止）。
+- 成果物（artifact）は docs/04_ARTIFACTS_AND_VERSIONING.md を守る。
+- 破壊的変更が必要なら work/rfc → docs/adr を先に作る（勝手に壊さない）。
+- すべての処理は Process（処理単位）としてHydraで管理し、単独実行できる形を守る。
+- 将来ClearML Task化を想定し、各Processが artifact を明確に出す設計にする（実装は今しない）。
+
+# ===== AUTOPILOT MODE (non-interactive) =====
+あなたは自動実行ループの中で動いています。**停止しないための規約**として次を厳守してください：
+
+【禁止】
+- ユーザーへの確認・質問・承認依頼（"確認してください" / "進めてよいですか" / "Approve" 等）は一切しない。
+- "今回は未実装" / "差分なし" のまま終了しない（必ず前進する）。
+
+【single source of truth】
+- タスクの status の唯一の真実は work/queue.json。task.md の 'Blocked' 記述は参考情報。
+  - queue が todo/in_progress なら実装を進める（task.md 側の Blocked を理由に止めない）。
+  - queue が blocked なら blocked-handling を行う（reason/unblock_condition/next_action を整備し、解除子タスクを起票）。
+
+【stale Blocked の扱い】
+- task.md に '## Blocked' が残っていても queue が todo/in_progress の場合、それは **stale**。
+  - task.md を更新し、Blocked を Notes/History に移す or 解除した上で実装を進める。
+
+【書き込み権限】
+- **書き込みは可能**な前提。work/queue.json 更新を含む必要な変更は実施する。
+  - もし実際にツール/環境エラーで書き込めない場合：
+    1) エラーメッセージを短く引用
+    2) 最小の対処（sandbox/approval/flags 見直し、権限確認）を提示
+    3) タスクを blocked にして解除子タスクを起票（子に unblocks を付与）
+    ※それでも『確認してください』は書かない。
+
+【必ずどれかを実施（Decision Protocol）】
+A) 実装を進める → テスト/検証 → work/queue.json を done に更新
+B) 進められない → work/queue.json を blocked に更新し、解除子タスク（unblocks付き）を作成
+C) 依存/状態がズレている → work/queue.json と task.md を修正して整合させた上で A へ
+
+# ===== SELECTED TASK =====
+- id: 050
+- title: データ収集モジュール拡張設計（外部API）
+- priority: P1
+- status: in_progress
+- path: work/tasks/050_data_collection_module.md
+
+# ===== CONTRACTS TO FOLLOW (open & read) =====
+- docs/08_SECURITY_PRIVACY.md
+- docs/00_INVARIANTS.md
+
+# ===== SKILLS TO FOLLOW (open & follow) =====
+- agentskills/skills/S20_dataset_loader.md
+
+
+# ===== TASK FILE (single source of truth for *intent*) =====
+# Task 050 (P1): データ収集モジュールの拡張設計（外部API）
+
+## 目的
+- 物性の追加に伴い、用途別のデータ収集機能を拡張可能にする
+
+## 方針
+- secrets は env 参照（docs/08）
+- 収集ロジックは plugin 化（data_source registry）
+
+## Plan
+1) `src/data_collection/`（案）を作る（APIクライアント層/整形層/キャッシュ層）
+2) まずは “スタブ” 実装（ダミーデータ）で全体I/Fを決める
+3) 後から PubChem 等の実装を追加できる形にする
+
+## Acceptance Criteria
+- [ ] data_source を切替可能（config）
+- [ ] secrets をコードに埋め込まない
+
+# ===== OUTPUT REQUIREMENTS (mandatory) =====
+1) 変更計画（ファイル単位）
+2) 実装（差分が分かるように）
+3) 追加/更新したテスト
+4) 検証コマンド
+5) 互換性影響（config/CLI/artifact）
+6) タスク完了時：work/queue.json の status を done に更新（満たせない場合は blocked と理由）
+
+
+mcp: context7 starting
+mcp: context7 ready
+mcp startup: ready: context7
+
+thinking
+**Preparing to explore dataset loader skill**
+exec
+/bin/zsh -lc ls in /Users/kawahito/Desktop/LJ_prediction succeeded in 274ms:
+README.md
+agentskills
+codex
+configs
+data
+docs
+learning_curve_val.png
+objective.md
+parity_test.png
+parity_val.png
+requirements.txt
+residual_test.png
+residual_val.png
+runs
+scripts
+src
+tests
+tools
+work
+y_train_hist.png
+
+thinking
+**Reading skill file**
+exec
+/bin/zsh -lc 'cat agentskills/skills/S20_dataset_loader.md' in /Users/kawahito/Desktop/LJ_prediction succeeded in 268ms:
+# S20 Dataset Loader
+
+## Purpose
+CSV/SDF 入力を共通表現へ変換するローダを追加/修正し、目的変数の差し替えに耐える基盤を作る。
+
+## Inputs
+- docs/02_DATA_CONTRACTS.md
+- work/tasks/040_add_new_property_task.md（または該当）
+
+## Allowed Changes
+- src/data/**
+- configs/dataset/**
+- tests/**
+
+## Steps
+1) 現状の CSV/SDF の読み込み箇所を特定
+2) column mapping を config で指定できるようにする
+3) 欠損/不一致の扱いをログ化
+4) unit test（最小CSV）を追加
+
+thinking
+**Evaluating skill relevance for task**
+exec
+/bin/zsh -lc 'cat docs/00_INVARIANTS.md' in /Users/kawahito/Desktop/LJ_prediction succeeded in 267ms:
+# Invariants（不変条件）
+
+このドキュメントは **開発中に変えてはいけない契約（Codexも遵守）** です。  
+迷ったらここへ戻り、ここに書かれていない“勝手な最適化”をしないでください。
+
+---
+
+## 0. 基本目的（この基盤のゴール）
+- **入力**: 化学構造（主に **CSV + SDF**。将来もこの形式を軸にする）
+- **出力**: 物性（LJパラメータに限らず、**同じCSV/SDF形式のまま目的変数を差し替える**）
+- **操作**: **CLI**（**Hydra**で設定管理）
+- **要求**:
+  - 前処理・特徴量化・学習・評価・推論・可視化を **拡張しやすい**
+  - モデル/特徴量の手法が複数あり、**選択して実行・比較評価しやすい**
+
+---
+
+## 1. もっとも重要な不変条件（破るなら RFC→ADR→更新）
+
+### 1.1 「処理単位（Process）」が第一級（最重要）
+
+thinking
+**Searching for security docs**
+exec
+/bin/zsh -lc 'cat docs/08_SECURITY_PRIVACY.md' in /Users/kawahito/Desktop/LJ_prediction succeeded in 277ms:
+# Security & Privacy（セキュリティ/秘密情報）
+
+このプロジェクトは化学構造データを扱います。PII は通常含まれませんが、外部 API 連携時の秘密情報を厳守します。
+
+## 1. secrets 管理
+- APIキー・トークンは Git 管理しない
+- `.env`（ローカル）または CI の secrets を使う
+- config に書く場合は `${oc.env:VAR_NAME}` のように環境変数参照
+
+## 2. ログへの出力
+- secrets をログに出さない
+- 外部APIのレスポンス全文をログに出さない（必要ならマスク）
+
+## 3. 依存ライブラリ
+- 追加依存は脆弱性を意識（定期的にアップデート）
+
+thinking
+**Requesting task file**
+exec
+/bin/zsh -lc 'cat work/tasks/050_data_collection_module.md' in /Users/kawahito/Desktop/LJ_prediction succeeded in 260ms:
+# Task 050 (P1): データ収集モジュールの拡張設計（外部API）
+
+## 目的
+- 物性の追加に伴い、用途別のデータ収集機能を拡張可能にする
+
+## 方針
+- secrets は env 参照（docs/08）
+- 収集ロジックは plugin 化（data_source registry）
+
+## Plan
+1) `src/data_collection/`（案）を作る（APIクライアント層/整形層/キャッシュ層）
+2) まずは “スタブ” 実装（ダミーデータ）で全体I/Fを決める
+3) 後から PubChem 等の実装を追加できる形にする
+
+## Acceptance Criteria
+- [ ] data_source を切替可能（config）
+- [ ] secrets をコードに埋め込まない
+
+thinking
+**Checking work/queue.json**
+exec
+/bin/zsh -lc 'cat work/queue.json' in /Users/kawahito/Desktop/LJ_prediction succeeded in 342ms:
+{
+  "version": 1,
+  "updated_at": "2025-12-26T15:17:53.403476Z",
+  "policy": {
+    "priority_order": [
+      "P0",
+      "P1",
+      "P2",
+      "P3"
+    ],
+    "status_order": [
+      "todo",
+      "in_progress",
+      "blocked",
+      "done"
+    ],
+    "auto_set_in_progress_on_next": true
+  },
+  "tasks": [
+    {
+
+thinking
+**Planning data collection module**
+exec
+/bin/zsh -lc "rg --files -g '*.py' src | head -n 200" in /Users/kawahito/Desktop/LJ_prediction succeeded in 295ms:
+src/data/__init__.py
+src/data/audit.py
+src/common/meta.py
+src/common/feature_pipeline.py
+src/common/ad.py
+src/common/chemistry.py
+src/common/utils.py
+src/common/plots.py
+src/common/descriptors.py
+src/common/splitters.py
+src/common/__init__.py
+src/common/io.py
+src/common/dataset_selectors.py
+src/common/lj.py
+src/common/leaderboard.py
+src/common/config.py
+src/common/metrics.py
+src/gnn/evaluate.py
+src/gnn/featurizer_graph.py
+src/gnn/train.py
+
+thinking
+**Checking entrypoints and scripts**
+exec
+/bin/zsh -lc 'rg -n "collect|collection" src configs work/tasks docs' in /Users/kawahito/Desktop/LJ_prediction succeeded in 270ms:
+src/data/audit.py:3:from collections import Counter, defaultdict
+src/data/audit.py:106:def _collect_elements(mol) -> List[str]:
+src/data/audit.py:213:        for el in _collect_elements(mol):
+docs/00_INVARIANTS.md:23:- 例: `build_dataset` / `preprocess` / `featurize` / `train` / `evaluate` / `predict` / `visualize` / `collect_data`
+docs/10_PROCESS_CATALOG.md:19:| collect_data | scripts/collect_data.py | API cfg | raw CSV/SDF | Data Collection Task |
+docs/01_ARCHITECTURE.md:36:- **P07 collect_data（任意）**  
+src/common/chemistry.py:4:from collections import defaultdict
+work/tasks/050_data_collection_module.md:11:1) `src/data_collection/`（案）を作る（APIクライアント層/整形層/キャッシュ層）
+src/common/leaderboard.py:68:    rows, upstream = _collect_rows(
+src/common/leaderboard.py:127:def _collect_rows(
+
+thinking
+**Inspecting key documentation files**
+exec
+/bin/zsh -lc 'cat docs/10_PROCESS_CATALOG.md' in /Users/kawahito/Desktop/LJ_prediction succeeded in 265ms:
+# Process Catalog（処理単位の一覧とI/O）
+
+このドキュメントは **Process（処理単位）** のカタログです。  
+「どのProcessが存在し、何を入力として、何を出力するか」を固定し、拡張してもブレないようにします。
+
+---
+
+## 1. Process一覧（推奨）
+| Process | Script（推奨） | 主入力 | 主出力（artifact） | ClearML化の単位 |
+|---|---|---|---|---|
+| build_dataset | scripts/build_dataset.py | raw CSV/SDF | dataset index/split, dataset_hash | Dataset Task |
+| audit_dataset | scripts/audit_dataset.py | raw CSV/SDF or processed dataset | audit_report.json, audit_report.md, plots | Audit Task |
+| featurize | scripts/featurize.py | dataset artifact | features cache/manifest | Task |
+| train | scripts/train.py | dataset(+features), task, model, train cfg | model.ckpt, metrics | Training Task |
+| evaluate | scripts/evaluate.py | model.ckpt + dataset | metrics, predictions | Evaluation Task |
+| predict | scripts/predict.py | model.ckpt + new input | predictions | Inference Task |
+| visualize | scripts/visualize.py | predictions/metrics | plots | Reporting Task |
+| leaderboard | scripts/leaderboard.py | runs/ (meta.json + metrics.json) | leaderboard.csv, leaderboard.md | Reporting Task |
+| collect_data | scripts/collect_data.py | API cfg | raw CSV/SDF | Data Collection Task |
+
+
+thinking
+**Checking scripts folder for data collection**
+exec
+/bin/zsh -lc 'ls scripts' in /Users/kawahito/Desktop/LJ_prediction succeeded in 250ms:
+audit_dataset.py
+build_dataset.py
+evaluate.py
+leaderboard.py
+predict.py
+train.py
+visualize.py
+
+thinking
+**Checking for data collection setup**
+exec
+/bin/zsh -lc 'ls configs' in /Users/kawahito/Desktop/LJ_prediction succeeded in 252ms:
+audit
+audit_dataset.yaml
+audit_dataset_fixture.yaml
+audit_dataset_quick.yaml
+config.yaml
+config_quick.yaml
+dataset
+dataset.yaml
+dataset_fixture.yaml
+dataset_quick.yaml
+eval
+features
+fp
+gnn
+hydra
+infer
+leaderboard
+leaderboard.yaml
+model
+preprocess
+
+thinking
+**Checking configuration processes**
+exec
+/bin/zsh -lc 'ls configs/process' in /Users/kawahito/Desktop/LJ_prediction succeeded in 269ms:
+audit_dataset.yaml
+build_dataset.yaml
+evaluate.yaml
+leaderboard.yaml
+predict.yaml
+train.yaml
+visualize.yaml
+
+thinking
+**Checking scripts for collect_data config**
+exec
+/bin/zsh -lc "sed -n '1,200p' scripts/build_dataset.py" in /Users/kawahito/Desktop/LJ_prediction succeeded in 268ms:
+from __future__ import annotations
+
+import argparse
+import sys
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+import numpy as np
+import pandas as pd
+from tqdm import tqdm
+
+# Allow running as `python scripts/build_dataset.py ...` without installing the package.
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from src.common.config import dump_yaml, load_config
+from src.common.chemistry import elements_string, n_elements, parse_formula
+from src.common.dataset_selectors import SelectorContext, apply_selectors
+from src.common.io import load_sdf_mol, read_csv, sdf_path_from_cas, write_csv
+
+thinking
+**Inspecting configuration utilities**
+exec
+/bin/zsh -lc "sed -n '1,200p' src/common/config.py" in /Users/kawahito/Desktop/LJ_prediction succeeded in 260ms:
+from __future__ import annotations
+
+from copy import deepcopy
+from pathlib import Path
+from typing import Any, Dict, Iterable
+
+import yaml
+
+
+class ConfigError(ValueError):
+    pass
+
+
+def load_yaml(path: str | Path) -> Dict[str, Any]:
+    path = Path(path)
+    if not path.exists():
+        raise ConfigError(f"Config file not found: {path}")
+    with path.open("r", encoding="utf-8") as f:
+        cfg = yaml.safe_load(f)
+    if cfg is None:
+
+thinking
+**Checking tasks specification**
+exec
+/bin/zsh -lc "sed -n '1,200p' src/tasks/spec.py" in /Users/kawahito/Desktop/LJ_prediction succeeded in 270ms:
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any, Callable, Dict, List, Optional, Sequence
+
+from src.common.metrics import regression_metrics
+
+MetricsFn = Callable[[Sequence[float], Sequence[float]], Dict[str, float]]
+
+
+def _empty_metrics(_: Sequence[float], __: Sequence[float]) -> Dict[str, float]:
+    return {}
+
+
+def _normalize_columns(value: Any) -> List[str]:
+    if value is None:
+        return []
+    if isinstance(value, (list, tuple)):
+        out: List[str] = []
+        for item in value:
+
+thinking
+**Planning new data collection module**
+exec
+/bin/zsh -lc "sed -n '1,200p' src/utils/artifacts.py" in /Users/kawahito/Desktop/LJ_prediction succeeded in 274ms:
+from __future__ import annotations
+
+import csv
+import hashlib
+import json
+import subprocess
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Dict, Iterable, Optional
+from uuid import uuid4
+
+from src.common.utils import save_json
+
+REQUIRED_META_KEYS = [
+    "run_id",
+    "process_name",
+    "created_at",
+    "git_sha",
+    "dataset_hash",
+    "config_hash",
+
+thinking
+**Continuing exploration**
+exec
+/bin/zsh -lc "sed -n '200,400p' src/utils/artifacts.py" in /Users/kawahito/Desktop/LJ_prediction succeeded in 260ms:
+    if model_version is not None:
+        meta["model_version"] = model_version
+
+    if extra:
+        meta.update(extra)
+
+    for key in REQUIRED_META_KEYS:
+        meta.setdefault(key, None)
+
+    return meta
+
+
+def save_meta(run_dir: str | Path, meta: Dict[str, Any]) -> Path:
+    run_dir = Path(run_dir)
+    path = run_dir / "meta.json"
+    save_json(path, meta)
+    return path
+
+
+def load_meta(path_or_dir: str | Path) -> Dict[str, Any]:
+
+thinking
+**Checking artifacts documentation**
+exec
+/bin/zsh -lc 'cat docs/04_ARTIFACTS_AND_VERSIONING.md' in /Users/kawahito/Desktop/LJ_prediction succeeded in 281ms:
+# Artifacts & Versioning（成果物・再現性）
+
+このドキュメントは「各Processが独立して実行でき、比較・再現できる」ための成果物（artifact）契約です。  
+将来ClearML Task化を見越し、**Process単位で入力/出力が追跡できる**形にします。
+
+---
+
+## 1. 出力ディレクトリ（推奨形）
+Hydraの出力ディレクトリ（例：`runs/<process>/<date>/<time>_<experiment>/`）に保存する。
+
+- `<process>` は `train`/`predict`/`evaluate` 等の処理単位
+- 1 run = 1 Process 実行
+
+---
+
+## 2. 必須ファイル（全Process共通）
+- `config.yaml`：最終 config（Hydra合成結果）
+- `meta.json`：メタ情報（下記必須キー）
+- `logs/`：ログ（形式は自由だが存在推奨）
+
+
+thinking
+**Evaluating artifact requirements and data paths**
+exec
+/bin/zsh -lc 'ls data' in /Users/kawahito/Desktop/LJ_prediction succeeded in 271ms:
+raw
+
+thinking
+**Checking raw data directory**
+exec
+/bin/zsh -lc 'ls data/raw' in /Users/kawahito/Desktop/LJ_prediction succeeded in 273ms:
+README.md
+sdf_files
+
+thinking
+**Checking raw data path**
+exec
+/bin/zsh -lc 'cat data/raw/README.md' in /Users/kawahito/Desktop/LJ_prediction succeeded in 270ms:
+# Raw data directory (not tracked in git)
+
+この `data/raw/` 配下は **生データ置き場**です。容量・ライセンス・機密性の観点から、デフォルトでは `.gitignore` で **git管理対象外**にしています。
+
+必要に応じて以下を配置してください：
+
+- `tc_pc_tb_pubchem.csv`（例: `data/raw/tc_pc_tb_pubchem.csv`）
+- `sdf_files/`（SDFはCAS一致のファイル名：例 `data/raw/sdf_files/71-43-2.sdf`）
+
+設定でパスは変更できます：`configs/dataset.yaml` / `configs/*/*.yaml` の `paths:` / `data:` を参照。
+
+
+thinking
+**Planning data collection script**
+exec
+/bin/zsh -lc "sed -n '1,200p' scripts/visualize.py" in /Users/kawahito/Desktop/LJ_prediction succeeded in 265ms:
+from __future__ import annotations
+
+import argparse
+import sys
+from pathlib import Path
+
+import pandas as pd
+
+# Allow running as `python scripts/visualize.py ...` without installing the package.
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from src.common.config import dump_yaml, load_config
+from src.common.meta import build_meta, save_meta
+from src.common.plots import save_hist, save_parity_plot, save_residual_plot
+from src.common.utils import ensure_dir, get_logger
+from src.utils.validate_config import validate_config
+
+
+
+thinking
+**Checking use of src/common/meta.py**
+exec
+/bin/zsh -lc "sed -n '1,200p' src/common/meta.py" in /Users/kawahito/Desktop/LJ_prediction succeeded in 265ms:
+from __future__ import annotations
+
+from src.utils.artifacts import build_meta, save_meta, utc_now_iso
+
+__all__ = ["build_meta", "save_meta", "utc_now_iso"]
+
+thinking
+**Preparing collect_data script**
+exec
+/bin/zsh -lc "sed -n '1,200p' src/utils/validate_config.py" in /Users/kawahito/Desktop/LJ_prediction succeeded in 299ms:
+from __future__ import annotations
+
+from typing import Any, Dict, Iterable
+
+from src.common.config import ConfigError
+from src.tasks import resolve_target_columns
+
+
+def _require_keys(cfg: Dict[str, Any], keys: Iterable[str], context: str) -> None:
+    missing = [k for k in keys if k not in cfg]
+    if missing:
+        raise ConfigError(f"{context} missing keys: {', '.join(missing)}")
+
+
+def _has_target(cfg: Dict[str, Any]) -> bool:
+    return bool(resolve_target_columns(cfg))
+
+
+def validate_config(cfg: Dict[str, Any]) -> None:
+    process = cfg.get("process", {})
+
+thinking
+**Inspecting config files for update**
+exec
+/bin/zsh -lc "sed -n '1,200p' configs/config.yaml" in /Users/kawahito/Desktop/LJ_prediction succeeded in 269ms:
+defaults:
+  - process: train
+  - dataset: default
+  - task: lj_epsilon
+  - preprocess: fp_default
+  - features: fp_morgan_desc
+  - model: fp_lightgbm
+  - train: fp_default
+  - eval: default
+  - hydra: default
+  - _self_
+
+experiment:
+  name: "lgbm_morgan_desc_v1"
+
+process:
+  backend: "fp"
+
+output:
+  run_dir: "runs/train/fp"
+
+thinking
+**Considering configuration placement**
+exec
+/bin/zsh -lc 'ls configs/eval' in /Users/kawahito/Desktop/LJ_prediction succeeded in 272ms:
+default.yaml
+quick.yaml
+
+thinking
+**Checking evaluation script configuration**
+exec
+/bin/zsh -lc "sed -n '1,200p' scripts/evaluate.py" in /Users/kawahito/Desktop/LJ_prediction succeeded in 265ms:
+from __future__ import annotations
+
+import argparse
+import sys
+from pathlib import Path
+
+# Allow running as `python scripts/evaluate.py ...` without installing the package.
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from src.common.config import load_config
+from src.fp import evaluate as fp_evaluate
+from src.gnn import evaluate as gnn_evaluate
+
+
+_FP_MODELS = {"lightgbm", "lgbm", "rf", "catboost", "gpr"}
+_GNN_MODELS = {"gcn", "mpnn"}
+
+
+
+thinking
+**Examining config and script setup**
+exec
+/bin/zsh -lc "sed -n '1,200p' configs/leaderboard.yaml" in /Users/kawahito/Desktop/LJ_prediction succeeded in 271ms:
+defaults:
+  - process: leaderboard
+  - leaderboard: default
+  - hydra: default
+  - _self_
+
+experiment:
+  name: "leaderboard"
+
+output:
+  exp_name: "leaderboard"
+
+thinking
+**Inspecting process group config**
+exec
+/bin/zsh -lc "sed -n '1,200p' configs/process/leaderboard.yaml" in /Users/kawahito/Desktop/LJ_prediction succeeded in 256ms:
+process:
+  name: "leaderboard"
+  kind: "leaderboard"
+
+output:
+  run_dir: "runs/leaderboard"
+
+thinking
+**Checking leaderboard default config**
+exec
+/bin/zsh -lc "sed -n '1,200p' configs/leaderboard/default.yaml" in /Users/kawahito/Desktop/LJ_prediction succeeded in 270ms:
+leaderboard:
+  root_dir: "runs"
+  metric_key: "r2"
+  metric_split: "val"
+  sort_order: "desc"
+  top_n: 20
+  filters:
+    task_name: null
+    model_name: null
+    featureset_name: null
+    process_name: null
+    dataset_hash: null
+    run_id: null
+    git_sha: null
+    tags: []
+    created_after: null
+    created_before: null
+
+thinking
+**Planning config files for data collection**
+exec
+/bin/zsh -lc "sed -n '1,200p' docs/01_ARCHITECTURE.md" in /Users/kawahito/Desktop/LJ_prediction succeeded in 265ms:
+# Architecture（全体設計）
+
+このドキュメントは、LJ_prediction を「物性予測の学習基盤」として拡張するための **設計の骨格** です。  
+特に「Process（処理単位）」を中心に、拡張しやすく、比較評価しやすい設計を定義します。
+
+---
+
+## 1. コア設計：Process（処理単位）
+### 1.1 なぜProcessを分けるか
+- 前処理・特徴量化・学習・評価・可視化は改良頻度が高い
+- “trainに追加の可視化を混ぜる”とスクリプトが肥大化し、比較や運用が壊れる
+- 将来 ClearML で「処理ごとに Task」として管理するには、粒度が必要
+
+### 1.2 Processの原則（不変）
+- **1つのCLIエントリポイント = 1つのProcess**
+- ProcessはHydraで管理し、単独実行できる
+- Processは artifact を出し、他Processはそれを入力として参照できる
+
+---
+
+
+thinking
+**Searching for registry patterns**
+exec
+/bin/zsh -lc 'rg -n "registry|register" src' in /Users/kawahito/Desktop/LJ_prediction exited 1 in 292ms:
+
+
+thinking
+**Planning data collection module design**
+
+I'm mapping out a new plugin-based data collection module with a simple registry and stub data sources, aiming for compatibility with existing dataset loaders; I'll define interfaces and data flow, organize source/client/formatter/cache components, and consider config and logging patterns already used in the codebase.
+exec
+/bin/zsh -lc "sed -n '1,200p' src/common/utils.py" in /Users/kawahito/Desktop/LJ_prediction succeeded in 302ms:
+from __future__ import annotations
+
+import json
+import logging
+import os
+import random
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Dict, Optional
+
+import numpy as np
+
+
+def ensure_dir(path: str | Path) -> Path:
+    p = Path(path)
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+def set_seed(seed: int) -> None:
+
+thinking
+**Planning new config group**
+exec
+/bin/zsh -lc "sed -n '1,200p' docs/03_CONFIG_CONVENTIONS.md" in /Users/kawahito/Desktop/LJ_prediction succeeded in 291ms:
+# Hydra Config Conventions（設定規約）
+
+このドキュメントは Hydra を用いた設定管理の規約です。  
+**Process（処理単位）をHydraで統一管理**し、手法の切替・比較評価をしやすくします。
+
+---
+
+## 1. 設定のゴール
+- **各Processが単独で実行可能**
+- モデル/特徴量/タスクの組合せを安全に切替可能
+- 比較評価（multirun）しても成果物が追跡可能
+- 将来ClearMLで Task 化しても、同じconfigを使い回せる
+
+---
+
+## 2. config group 構造（必須）
+- `process/`：どのProcessを実行するか（脚本ごとに固定でもよいが、共通鍵は持つ）
+- `dataset/`：入力データ・列マッピング・split・フィルタ
+- `task/`：目的変数/タスクタイプ（regression/classification/multitask）
+- `preprocess/`：正規化/3D生成/欠損処理
+
+thinking
+**Planning configuration structure**
+exec
+/bin/zsh -lc "sed -n '1,200p' src/common/io.py" in /Users/kawahito/Desktop/LJ_prediction succeeded in 269ms:
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Optional
+
+import pandas as pd
+
+try:
+    from rdkit import Chem
+except Exception:  # pragma: no cover
+    Chem = None
+
+
+def read_csv(path: str | Path) -> pd.DataFrame:
+    return pd.read_csv(Path(path))
+
+
+def write_csv(df: pd.DataFrame, path: str | Path) -> None:
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+thinking
+**Outlining data collection architecture**
+
+I’m mapping out a data collection system with stub data and CSV output, organizing it into dataclasses, clients, formatters, caching, registry, and sources. I’m planning a script to run data collection with config-driven API key handling and flexible output paths, balancing artifact needs and downstream data use. It’s a lot to coordinate, but this structure should make the process clear and extendable!
+exec
+/bin/zsh -lc 'rg -n "meta" -n scripts/build_dataset.py' in /Users/kawahito/Desktop/LJ_prediction succeeded in 270ms:
+47:    ap = argparse.ArgumentParser(description="Build processed dataset: add LJ params, compute meta columns, apply selectors, make splits.")
+208:    split_meta = {"method": split_method, "seed": split_seed, "fractions": ratios}
+210:        split_meta["group_key"] = str(split_cfg.get("group_key"))
+211:    save_split_json(indices, out_indices_dir / "split.json", metadata=split_meta)
+
+thinking
+**Verifying artifact usage in tasks**
+exec
+/bin/zsh -lc "sed -n '1,200p' src/fp/train.py" in /Users/kawahito/Desktop/LJ_prediction succeeded in 259ms:
+from __future__ import annotations
+
+import argparse
+import pickle
+from dataclasses import asdict
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
+import numpy as np
+import pandas as pd
+
+from src.common.ad import applicability_domain
+from src.common.config import dump_yaml, load_config
+from src.common.feature_pipeline import FingerprintFeaturePipeline, save_feature_pipeline
+from src.common.meta import build_meta, save_meta
+from src.common.io import load_sdf_mol, read_csv, sdf_path_from_cas
+from src.common.plots import save_parity_plot, save_residual_plot, save_hist
+from src.common.splitters import load_split_indices
+from src.common.utils import ensure_dir, get_logger, save_json, set_seed
+from src.fp.feature_utils import hash_cfg
+
+thinking
+**Planning data collection integration**
+
+I’m thinking through how to align the new data collection with the existing dataset loader skill, especially around column mapping and handling missing data. It looks like reading docs/02 for data contracts could help keep output columns consistent, so I’ll check that carefully but keep the scope focused. Adding unit tests based on this setup feels like a solid next step.
+exec
+/bin/zsh -lc "sed -n '1,200p' docs/02_DATA_CONTRACTS.md" in /Users/kawahito/Desktop/LJ_prediction succeeded in 273ms:
+# Data Contracts（データ契約）
+
+このドキュメントは **CSV/SDF を中心としたデータ形式の共通契約** を定義します。  
+目的変数（物性）が増えても、ここを守れば基盤が壊れないようにします。
+
+## 1. 入力データの基本形（推奨）
+### 1.1 CSV（テーブル）
+- 1行 = 1分子（サンプル）
+- 必須列（推奨名）
+  - `sample_id`：一意ID（無ければ生成）
+  - `cas`：CAS番号（ある場合）
+  - `smiles`：SMILES（ある場合）
+  - `formula`：分子式（ある場合）
+  - `sdf_path`：SDF ファイルへのパス（行ごと or 共通）
+  - `target.<name>`：目的変数（例 `target.lj_sigma`, `target.lj_epsilon`）
+- 任意列
+  - `meta.*`：データソース、温度条件、参考値など
+
+※ 既存CSVの列名が異なる場合は `configs/dataset/*.yaml` でマッピングする。
+
+
+thinking
+**Aligning data contract with dataset output**
+exec
+/bin/zsh -lc "sed -n '1,200p' configs/dataset/default.yaml" in /Users/kawahito/Desktop/LJ_prediction succeeded in 262ms:
+paths:
+  raw_csv: "data/raw/tc_pc_tb_pubchem.csv"
+  sdf_dir: "data/raw/sdf_files"
+  out_csv: "data/processed/dataset_with_lj.csv"
+  out_indices_dir: "data/processed/indices"
+
+columns:
+  cas: "CAS"
+  formula: "MolecularFormula"
+  tc: "Tc [K]"
+  pc: "Pc [Pa]"
+  tb: "Tb [K]"
+
+seed: 42
+
+lj:
+  epsilon_method: "bird_critical"
+  sigma_method: "bird_critical"
+  epsilon_col: "lj_epsilon_over_k_K"
+  sigma_col: "lj_sigma_A"
+
+thinking
+**Designing data formatting and caching**
+
+I'm figuring out a flexible way to map raw data fields like CAS and formula into standardized output columns using a configurable formatter. I’m planning classes to handle raw and normalized records, with a formatter applying column maps and filling missing fields gracefully. For caching, I'll build a simple backend that saves and loads data by keys derived from config queries. To keep things simple initially, I might use dummy data and basic JSON file caching while ensuring the dataset contract like mandatory sample IDs is met. Next, I want to see what tests exist to guide this.
+exec
+/bin/zsh -lc 'rg --files tests' in /Users/kawahito/Desktop/LJ_prediction succeeded in 304ms:
+tests/test_fixture_dataset.py
+tests/test_tasks.py
+tests/test_leaderboard.py
+tests/test_audit_dataset.py
+tests/conftest.py
+tests/test_splitters.py
+tests/test_config_loader.py
+tests/test_feature_pipeline.py
+tests/contract/test_artifacts_contract.py
+tests/fixtures/data/raw/tc_pc_tb_fixture.csv
+tests/fixtures/data/raw/sdf_files/64-17-5.sdf
+tests/fixtures/data/raw/sdf_files/67-64-1.sdf
+tests/fixtures/data/raw/sdf_files/124-38-9.sdf
+tests/fixtures/data/raw/sdf_files/110-82-7.sdf
+tests/fixtures/data/raw/sdf_files/74-98-6.sdf
+tests/fixtures/data/raw/sdf_files/74-85-1.sdf
+tests/fixtures/data/processed/dataset_config_snapshot.yaml
+tests/fixtures/data/processed/dataset_with_lj.csv
+tests/fixtures/data/processed/indices/val.txt
+tests/fixtures/data/processed/indices/test.txt
+
+thinking
+**Planning test additions**
+exec
+/bin/zsh -lc "sed -n '1,200p' tests/test_config_loader.py" in /Users/kawahito/Desktop/LJ_prediction succeeded in 241ms:
+from pathlib import Path
+
+from src.common.config import load_config
+
+
+def test_load_config_resolves_groups_from_root() -> None:
+    cfg = load_config(Path("configs/fp/train_fixture.yaml"))
+
+    assert cfg["process"]["name"] == "train"
+    assert cfg["process"]["backend"] == "fp"
+    assert cfg["output"]["run_dir"] == "runs/train/fp"
+    assert cfg["paths"]["raw_csv"] == "tests/fixtures/data/raw/tc_pc_tb_fixture.csv"
+
+thinking
+**Checking test files**
+exec
+/bin/zsh -lc "sed -n '1,200p' tests/test_fixture_dataset.py" in /Users/kawahito/Desktop/LJ_prediction succeeded in 269ms:
+from __future__ import annotations
+
+from pathlib import Path
+
+import pandas as pd
+
+
+def test_fixture_dataset_files_exist() -> None:
+    root = Path(__file__).resolve().parents[1]
+    csv_path = root / "tests" / "fixtures" / "data" / "raw" / "tc_pc_tb_fixture.csv"
+    sdf_dir = root / "tests" / "fixtures" / "data" / "raw" / "sdf_files"
+
+    assert csv_path.exists()
+    assert sdf_dir.exists()
+
+    df = pd.read_csv(csv_path)
+    required_cols = {"CAS", "MolecularFormula", "Tc [K]", "Pc [Pa]", "Tb [K]"}
+    assert required_cols.issubset(set(df.columns))
+
+    missing = []
+
+thinking
+**Designing data_collection module and tests**
+
+I'm outlining a new data_collection module with dataclasses for queries and results, focusing on outputting CSV and SDF data with configurable column mapping and logging for missing fields. I'll plan configs for data sources, output paths, and caching, while integrating with the process's run directory setup. I also want to add minimal pytest-based tests for config loading and dummy data formatting to satisfy acceptance criteria without relying on external APIs or complex dependencies. Next, I’ll review existing test infrastructure and config examples to align everything smoothly.
+exec
+/bin/zsh -lc "sed -n '1,200p' tests/conftest.py" in /Users/kawahito/Desktop/LJ_prediction succeeded in 291ms:
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+thinking
+**Planning implementation details and test strategy**
+
+I'm setting the foundation to follow the ASCII-only requirement and not include Japanese comments. I plan to create new modules in a `src/data_collection` folder, updating package structure as needed. I'll prepare to run targeted pytest tests for these new components, checking if pytest is available and noting if tests fail due to missing dependencies. I’ll follow the autopilot constraints by not asking questions, but proceeding with these steps while providing a clear change plan and diff.
+exec
+/bin/zsh -lc 'cat src/__init__.py' in /Users/kawahito/Desktop/LJ_prediction succeeded in 267ms:
+from __future__ import annotations
+
+import os
+from pathlib import Path
+
+
+def _configure_runtime_cache() -> None:
+    """
+    Configure writable cache directories for common scientific Python libs.
+
+    In some environments (sandboxed runs, CI, containers), $HOME may not be writable.
+    Matplotlib/lightgbm may import Matplotlib internally; setting these early avoids
+    noisy warnings and repeated cache builds.
+    """
+    repo_root = Path(__file__).resolve().parents[1]
+    cache_root = repo_root / ".cache"
+    mpl_cache = cache_root / "matplotlib"
+    try:
+        mpl_cache.mkdir(parents=True, exist_ok=True)
+    except Exception:
+
+
+
+thinking
+**Outlining new data collection module architecture**
+
+I’m mapping out a comprehensive design for a new data collection module with layered components like registry, caching, API clients, formatters, data sources, and runner orchestration. The plan covers config structure, type definitions, caching raw JSON responses, implementing a dummy data source for stubbing, and integrating everything under `src/data_collection` with maintainable extensibility and testing in mind.
+thinking
+**Designing core modules and integration details**
+
+I’m detailing type definitions, caching logic, client and formatter interfaces including a dummy client and mapping formatter, and the registry pattern for data sources. I’m also planning the runner orchestration to load configs, run collection, handle cache, output files, exports, logging, API key handling, and tests—all organized into clear modules under `src/data_collection` with proper imports to ensure registrations and smooth integration.
+thinking
+**Implementing dummy source and utility functions**
+
+I’m finalizing the dummy data source registration, defining resolve_api_key to safely handle secrets from environment variables, enhancing MappingFormatter with logging for missing fields, planning output file writing with metadata and export handling, and considering configuration defaults and validation. Also, I’m preparing to create a multi-step plan to organize implementation and testing.
+Plan update
+Set up a short plan for the new data collection module and process integration.
+  → Review existing process/config patterns and data contracts for collect_data alignment
+  • Implement data_collection module (client/formatter/cache/registry), collect_data script, and configs
+  • Add unit tests + update queue status after validation
+
+thinking
+**Updating progress on plan**
+Plan update
+  ✓ Review existing process/config patterns and data contracts for collect_data alignment
+  → Implement data_collection module (client/formatter/cache/registry), collect_data script, and configs
+  • Add unit tests + update queue status after validation
+
+thinking
+**Creating new type definitions file**
+exec
+/bin/zsh -lc "cat <<'EOF' > src/data_collection/types.py
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional
+
+import pandas as pd
+
+
+@dataclass(frozen=True)
+class DataCollectionQuery:
+    identifiers: List[str] = field(default_factory=list)
+    filters: Dict[str, Any] = field(default_factory=dict)
+    limit: Optional[int] = None
+
+    def cache_key_payload(self) -> Dict[str, Any]:
+        return {
+            \"identifiers\": list(self.identifiers),
+            \"filters\": dict(self.filters),
+            \"limit\": self.limit,
+        }
+
+
+@dataclass
+class RawPayload:
+    records: List[Dict[str, Any]]
+    sdf_records: Dict[str, str] = field(default_factory=dict)
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class DataCollectionResult:
+    table: pd.DataFrame
+    sdf_records: Dict[str, str] = field(default_factory=dict)
+    metadata: Dict[str, Any] = field(default_factory=dict)
+EOF" in /Users/kawahito/Desktop/LJ_prediction exited 1 in 315ms:
+zsh:1: no such file or directory: src/data_collection/types.py
+
+thinking
+**Preparing to create directory**
+exec
+/bin/zsh -lc 'mkdir -p src/data_collection' in /Users/kawahito/Desktop/LJ_prediction succeeded in 263ms:
+
+
+thinking
+**Creating new file**
+exec
+/bin/zsh -lc "cat <<'EOF' > src/data_collection/types.py
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional
+
+import pandas as pd
+
+
+@dataclass(frozen=True)
+class DataCollectionQuery:
+    identifiers: List[str] = field(default_factory=list)
+    filters: Dict[str, Any] = field(default_factory=dict)
+    limit: Optional[int] = None
+
+    def cache_key_payload(self) -> Dict[str, Any]:
+        return {
+            \"identifiers\": list(self.identifiers),
+            \"filters\": dict(self.filters),
+            \"limit\": self.limit,
+        }
+
+
+@dataclass
+class RawPayload:
+    records: List[Dict[str, Any]]
+    sdf_records: Dict[str, str] = field(default_factory=dict)
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class DataCollectionResult:
+    table: pd.DataFrame
+    sdf_records: Dict[str, str] = field(default_factory=dict)
+    metadata: Dict[str, Any] = field(default_factory=dict)
+EOF" in /Users/kawahito/Desktop/LJ_prediction succeeded in 275ms:
+
+
+thinking
+**Caching module**
+exec
+/bin/zsh -lc "cat <<'EOF' > src/data_collection/cache.py
+from __future__ import annotations
+
+import hashlib
+import json
+from pathlib import Path
+from typing import Any, Optional
+
+from src.data_collection.types import DataCollectionQuery, RawPayload
+
+
+class FileCache:
+    def __init__(self, cache_dir: str | Path) -> None:
+        self.cache_dir = Path(cache_dir)
+
+    def _cache_path(self, key: str) -> Path:
+        return self.cache_dir / f\"{key}.json\"
+
+    def build_key(self, source_name: str, query: DataCollectionQuery, extra: Optional[dict[str, Any]] = None) -> str:
+        payload = {
+            \"source\": source_name,
+            \"query\": query.cache_key_payload(),
+            \"extra\": extra or {},
+        }
+        blob = json.dumps(payload, sort_keys=True, default=str, ensure_ascii=True).encode(\"utf-8\")
+        return hashlib.sha256(blob).hexdigest()
+
+    def load(self, key: str) -> Optional[RawPayload]:
+        path = self._cache_path(key)
+        if not path.exists():
+            return None
+        with path.open(\"r\", encoding=\"utf-8\") as f:
+            data = json.load(f)
+        return RawPayload(
+            records=list(data.get(\"records\", [])),
+            sdf_records=dict(data.get(\"sdf_records\", {})),
+            metadata=dict(data.get(\"metadata\", {})),
+        )
+
+    def save(self, key: str, payload: RawPayload) -> Path:
+        path = self._cache_path(key)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        data = {
+            \"records\": payload.records,
+            \"sdf_records\": payload.sdf_records,
+            \"metadata\": payload.metadata,
+        }
+        with path.open(\"w\", encoding=\"utf-8\") as f:
+            json.dump(data, f, ensure_ascii=True, indent=2)
+        return path
+EOF" in /Users/kawahito/Desktop/LJ_prediction succeeded in 264ms:
+
+
+thinking
+**Setting up utility module**
+exec
+/bin/zsh -lc "cat <<'EOF' > src/data_collection/utils.py
+from __future__ import annotations
+
+import os
+from typing import Any, Dict, Optional
+
+
+def resolve_api_key(cfg: Dict[str, Any], required: bool = False) -> Optional[str]:
+    if cfg.get(\"api_key\"):
+        raise ValueError(\"api_key must be provided via environment variables; set api_key_env instead.\")
+    env_name = cfg.get(\"api_key_env\")
+    if not env_name:
+        return None
+    api_key = os.environ.get(str(env_name))
+    if required and not api_key:
+        raise ValueError(f\"Environment variable '{env_name}' is required but not set.\")
+    return api_key
+EOF" in /Users/kawahito/Desktop/LJ_prediction succeeded in 263ms:
+
+
+thinking
+**Setting up client directories**
+exec
+/bin/zsh -lc 'mkdir -p src/data_collection/clients' in /Users/kawahito/Desktop/LJ_prediction succeeded in 265ms:
+
+
+thinking
+**Initializing base setup**
+exec
+/bin/zsh -lc "cat <<'EOF' > src/data_collection/clients/base.py
+from __future__ import annotations
+
+from abc import ABC, abstractmethod
+from typing import Any, Dict, Optional
+
+from src.data_collection.types import DataCollectionQuery, RawPayload
+
+
+class DataClient(ABC):
+    def __init__(self, cfg: Dict[str, Any], api_key: Optional[str] = None) -> None:
+        self.cfg = cfg
+        self.api_key = api_key
+
+    @abstractmethod
+    def fetch(self, query: DataCollectionQuery) -> RawPayload:
+        raise NotImplementedError
+EOF" in /Users/kawahito/Desktop/LJ_prediction succeeded in 275ms:
+
+
+thinking
+**Creating dummy client**
+exec
+/bin/zsh -lc "cat <<'EOF' > src/data_collection/clients/dummy.py
+from __future__ import annotations
+
+from typing import Any, Dict, List
+
+from src.data_collection.clients.base import DataClient
+from src.data_collection.types import DataCollectionQuery, RawPayload
+
+
+class DummyClient(DataClient):
+    def fetch(self, query: DataCollectionQuery) -> RawPayload:
+        records_cfg = self.cfg.get(\"records\")
+        if isinstance(records_cfg, list) and records_cfg:
+            records = [dict(item) for item in records_cfg]
+        else:
+            records = [
+                {
+                    \"cas\": \"64-17-5\",
+                    \"formula\": \"C2H6O\",
+                    \"tc_k\": 514.0,
+                    \"pc_pa\": 6137000.0,
+                    \"tb_k\": 351.5,
+                    \"source\": \"dummy\",
+                },
+                {
+                    \"cas\": \"67-64-1\",
+                    \"formula\": \"C3H6O\",
+                    \"tc_k\": 508.0,
+                    \"pc_pa\": 4700000.0,
+                    \"tb_k\": 329.4,
+                    \"source\": \"dummy\",
+                },
+            ]
+
+        if query.identifiers:
+            wanted = set(str(x) for x in query.identifiers)
+            records = [r for r in records if str(r.get(\"cas\")) in wanted]
+
+        if query.limit is not None:
+            records = records[: int(query.limit)]
+
+        metadata = {\"dummy_count\": len(records)}
+        return RawPayload(records=records, sdf_records={}, metadata=metadata)
+EOF" in /Users/kawahito/Desktop/LJ_prediction succeeded in 266ms:
+
+
+thinking
+**Adding __init__.py for clients**
+exec
+/bin/zsh -lc "cat <<'EOF' > src/data_collection/clients/__init__.py
+from __future__ import annotations
+
+from src.data_collection.clients.base import DataClient
+from src.data_collection.clients.dummy import DummyClient
+
+__all__ = [\"DataClient\", \"DummyClient\"]
+EOF" in /Users/kawahito/Desktop/LJ_prediction succeeded in 275ms:
+
+
+thinking
+**Creating directory for formatters**
+exec
+/bin/zsh -lc 'mkdir -p src/data_collection/formatters' in /Users/kawahito/Desktop/LJ_prediction succeeded in 269ms:
+
+
+thinking
+**Creating base structure**
+exec
+/bin/zsh -lc "cat <<'EOF' > src/data_collection/formatters/base.py
+from __future__ import annotations
+
+from abc import ABC, abstractmethod
+from logging import Logger
+from typing import Any, Dict
+
+from src.data_collection.types import DataCollectionResult, RawPayload
+
+
+class DataFormatter(ABC):
+    @abstractmethod
+    def format(self, payload: RawPayload, cfg: Dict[str, Any], logger: Logger) -> DataCollectionResult:
+        raise NotImplementedError
+EOF" in /Users/kawahito/Desktop/LJ_prediction succeeded in 307ms:
+
+
+thinking
+**Creating a mapping formatter**
+exec
+/bin/zsh -lc "cat <<'EOF' > src/data_collection/formatters/mapping.py
+from __future__ import annotations
+
+from collections import Counter
+from typing import Any, Dict, List
+
+import pandas as pd
+
+from src.data_collection.formatters.base import DataFormatter
+from src.data_collection.types import DataCollectionResult, RawPayload
+
+
+class MappingFormatter(DataFormatter):
+    def __init__(self, cfg: Dict[str, Any]) -> None:
+        self.column_map = dict(cfg.get(\"column_map\", {}) or {})
+        self.passthrough_fields = list(cfg.get(\"passthrough_fields\", []) or [])
+        self.sample_id_column = str(cfg.get(\"sample_id_column\", \"sample_id\"))
+        self.missing_value = cfg.get(\"missing_value\", None)
+
+    def _build_rows(self, records: List[Dict[str, Any]], logger) -> pd.DataFrame:
+        if not self.column_map:
+            logger.warning(\"MappingFormatter column_map is empty; using raw keys as output columns.\")
+            df = pd.DataFrame(records)
+        else:
+            missing = Counter()
+            rows = []
+            for record in records:
+                row = {}
+                for out_col, raw_key in self.column_map.items():
+                    if raw_key in record:
+                        row[out_col] = record.get(raw_key)
+                    else:
+                        row[out_col] = self.missing_value
+                        missing[raw_key] += 1
+                for field in self.passthrough_fields:
+                    if field in record:
+                        row[field] = record.get(field)
+                rows.append(row)
+            df = pd.DataFrame(rows)
+            if missing:
+                missing_keys = \", \".join(sorted(missing.keys()))
+                logger.warning(\"Missing raw fields for mapping: %s\", missing_keys)
+
+        if self.sample_id_column not in df.columns:
+            df[self.sample_id_column] = [f\"sample_{i:06d}\" for i in range(len(df))]
+        else:
+            missing_mask = df[self.sample_id_column].isna() | (df[self.sample_id_column].astype(str).str.strip() == \"\")
+            if missing_mask.any():
+                fill_ids = [f\"sample_{i:06d}\" for i in range(len(df))]
+                df.loc[missing_mask, self.sample_id_column] = [fill_ids[i] for i in df.index[missing_mask]]
+        return df
+
+    def format(self, payload: RawPayload, cfg: Dict[str, Any], logger) -> DataCollectionResult:
+        df = self._build_rows(payload.records, logger)
+        return DataCollectionResult(table=df, sdf_records=payload.sdf_records, metadata=payload.metadata)
+EOF" in /Users/kawahito/Desktop/LJ_prediction succeeded in 279ms:
+
+
+thinking
+**Initializing formatters**
+exec
+/bin/zsh -lc "cat <<'EOF' > src/data_collection/formatters/__init__.py
+from __future__ import annotations
+
+from src.data_collection.formatters.base import DataFormatter
+from src.data_collection.formatters.mapping import MappingFormatter
+
+__all__ = [\"DataFormatter\", \"MappingFormatter\"]
+EOF" in /Users/kawahito/Desktop/LJ_prediction succeeded in 263ms:
+
+
+thinking
+**Creating sources directory**
+exec
+/bin/zsh -lc 'mkdir -p src/data_collection/sources' in /Users/kawahito/Desktop/LJ_prediction succeeded in 266ms:
+
+
+thinking
+**Initializing base setup**
+exec
+/bin/zsh -lc "cat <<'EOF' > src/data_collection/sources/base.py
+from __future__ import annotations
+
+from logging import Logger
+from typing import Any, Dict, Optional
+
+from src.data_collection.cache import FileCache
+from src.data_collection.clients.base import DataClient
+from src.data_collection.formatters.base import DataFormatter
+from src.data_collection.types import DataCollectionQuery, DataCollectionResult
+
+
+class DataSource:
+    def __init__(
+        self,
+        name: str,
+        client: DataClient,
+        formatter: DataFormatter,
+        cache: Optional[FileCache] = None,
+        cache_extra: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        self.name = name
+        self.client = client
+        self.formatter = formatter
+        self.cache = cache
+        self.cache_extra = cache_extra or {}
+
+    def collect(self, query: DataCollectionQuery, formatter_cfg: Dict[str, Any], logger: Logger) -> DataCollectionResult:
+        payload = None
+        cache_key = None
+        if self.cache is not None:
+            cache_key = self.cache.build_key(self.name, query, extra=self.cache_extra)
+            payload = self.cache.load(cache_key)
+            if payload is not None:
+                logger.info(\"Cache hit for data source '%s'\", self.name)
+
+        if payload is None:
+            payload = self.client.fetch(query)
+            if self.cache is not None and cache_key is not None:
+                self.cache.save(cache_key, payload)
+
+        return self.formatter.format(payload, formatter_cfg, logger)
+EOF" in /Users/kawahito/Desktop/LJ_prediction succeeded in 280ms:
+
+
+thinking
+**Creating dummy source**
+exec
+/bin/zsh -lc "cat <<'EOF' > src/data_collection/sources/dummy.py
+from __future__ import annotations
+
+from typing import Any, Dict, Optional
+
+from src.data_collection.cache import FileCache
+from src.data_collection.clients.dummy import DummyClient
+from src.data_collection.formatters.mapping import MappingFormatter
+from src.data_collection.registry import register_data_source
+from src.data_collection.sources.base import DataSource
+from src.data_collection.utils import resolve_api_key
+
+
+@register_data_source(\"dummy\")
+def build_dummy_source(
+    source_cfg: Dict[str, Any],
+    collection_cfg: Dict[str, Any],
+    cache: Optional[FileCache],
+) -> DataSource:
+    client_cfg = source_cfg.get(\"client\", {}) or {}
+    api_key = resolve_api_key(client_cfg, required=bool(client_cfg.get(\"api_key_required\", False)))
+    client = DummyClient(client_cfg, api_key=api_key)
+
+    formatter_cfg = source_cfg.get(\"formatter\", {}) or {}
+    formatter_cfg.setdefault(\"sample_id_column\", collection_cfg.get(\"sample_id_column\", \"sample_id\"))
+    formatter = MappingFormatter(formatter_cfg)
+
+    return DataSource(name=\"dummy\", client=client, formatter=formatter, cache=cache)
+EOF" in /Users/kawahito/Desktop/LJ_prediction succeeded in 267ms:
+
+
+thinking
+**Creating sources __init__**
+exec
+/bin/zsh -lc "cat <<'EOF' > src/data_collection/sources/__init__.py
+from __future__ import annotations
+
+from src.data_collection.sources.dummy import build_dummy_source
+
+__all__ = [\"build_dummy_source\"]
+EOF" in /Users/kawahito/Desktop/LJ_prediction succeeded in 274ms:
+
+
+thinking
+**Setting up registry**
+exec
+/bin/zsh -lc "cat <<'EOF' > src/data_collection/registry.py
+from __future__ import annotations
+
+from typing import Any, Callable, Dict, Optional
+
+from src.data_collection.cache import FileCache
+from src.data_collection.sources.base import DataSource
+
+Factory = Callable[[Dict[str, Any], Dict[str, Any], Optional[FileCache]], DataSource]
+
+
+_DATA_SOURCE_FACTORIES: Dict[str, Factory] = {}
+
+
+def register_data_source(name: str) -> Callable[[Factory], Factory]:
+    def _decorator(factory: Factory) -> Factory:
+        _DATA_SOURCE_FACTORIES[name] = factory
+        return factory
+
+    return _decorator
+
+
+def create_data_source(
+    name: str,
+    source_cfg: Dict[str, Any],
+    collection_cfg: Dict[str, Any],
+    cache: Optional[FileCache],
+) -> DataSource:
+    if not _DATA_SOURCE_FACTORIES:
+        from src.data_collection import sources  # noqa: F401
+
+    if name not in _DATA_SOURCE_FACTORIES:
+        available = \", \".join(sorted(_DATA_SOURCE_FACTORIES.keys()))
+        raise ValueError(f\"Unknown data_source '{name}'. Available: {available}\")
+    return _DATA_SOURCE_FACTORIES[name](source_cfg, collection_cfg, cache)
+EOF" in /Users/kawahito/Desktop/LJ_prediction succeeded in 304ms:
+
+
+thinking
+**Creating __init__.py for data_collection**
+exec
+/bin/zsh -lc "cat <<'EOF' > src/data_collection/__init__.py
+from __future__ import annotations
+
+from src.data_collection.registry import create_data_source, register_data_source
+from src.data_collection.types import DataCollectionQuery, DataCollectionResult, RawPayload
+
+__all__ = [
+    \"create_data_source\",
+    \"register_data_source\",
+    \"DataCollectionQuery\",
+    \"DataCollectionResult\",
+    \"RawPayload\",
+]
+EOF" in /Users/kawahito/Desktop/LJ_prediction succeeded in 278ms:
+
+
+thinking
+**Implementing data collection runner**
+exec
+/bin/zsh -lc 'cat .gitignore' in /Users/kawahito/Desktop/LJ_prediction succeeded in 270ms:
+data/processed/
+runs/
+.cache/
+.venv/
+.DS_Store
+__pycache__/
+*.pyc
+*.pkl
+*.pt
+*.npz
+*.log
+
+# Raw data (keep code repo lightweight)
+data/raw/*
+!data/raw/README.md
+!data/raw/sdf_files/
+data/raw/sdf_files/*
+!data/raw/sdf_files/README.md
+
+thinking
+**Configuring safe cache and export directories**
+
+I'm setting the default cache directory to `.cache/data_collection` to keep it ignored by git, and ensuring the run directory is under `runs/`, which is also ignored. For export, I'll disable it by default to avoid writing to tracked areas like `data/raw` during tests, but allow the user to enable exporting if desired. Now I'll proceed to implement this in the runner.
+exec
+/bin/zsh -lc "cat <<'EOF' > src/data_collection/runner.py
+from __future__ import annotations
+
+import shutil
+from pathlib import Path
+from typing import Any, Dict, Iterable, Optional
+
+import pandas as pd
+
+from src.common.config import dump_yaml
+from src.common.io import write_csv
+from src.common.meta import build_meta, save_meta
+from src.common.utils import ensure_dir, get_logger
+from src.data_collection.cache import FileCache
+from src.data_collection.registry import create_data_source
+from src.data_collection.types import DataCollectionQuery
+from src.utils.artifacts import hash_files
+from src.utils.validate_config import validate_config
+
+
+def _parse_query(source_cfg: Dict[str, Any], collection_cfg: Dict[str, Any]) -> DataCollectionQuery:
+    query_cfg = dict(source_cfg.get(\"query\", {}) or {})
+    query_cfg.update(collection_cfg.get(\"query\", {}) or {})
+    identifiers = query_cfg.get(\"identifiers\", []) or []
+    filters = query_cfg.get(\"filters\", {}) or {}
+    limit = query_cfg.get(\"limit\")
+    return DataCollectionQuery(identifiers=[str(x) for x in identifiers], filters=dict(filters), limit=limit)
+
+
+def _write_sdf_records(sdf_dir: Path, sdf_records: Dict[str, str], overwrite: bool) -> list[Path]:
+    paths = []
+    if not sdf_records:
+        return paths
+    sdf_dir.mkdir(parents=True, exist_ok=True)
+    for key, sdf_text in sdf_records.items():
+        path = sdf_dir / f\"{key}.sdf\"
+        if path.exists() and not overwrite:
+            continue
+        path.write_text(str(sdf_text), encoding=\"utf-8\")
+        paths.append(path)
+    return paths
+
+
+def _maybe_export(path: Path, target: Optional[str | Path], overwrite: bool) -> Optional[Path]:
+    if not target:
+        return None
+    target_path = Path(target)
+    if target_path.exists() and not overwrite:
+        return None
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(path, target_path)
+    return target_path
+
+
+def _maybe_export_dir(src_dir: Path, target_dir: Optional[str | Path], overwrite: bool) -> Optional[Path]:
+    if not target_dir:
+        return None
+    target_dir = Path(target_dir)
+    target_dir.mkdir(parents=True, exist_ok=True)
+    for path in sorted(src_dir.glob(\"*.sdf\")):
+        dest = target_dir / path.name
+        if dest.exists() and not overwrite:
+            continue
+        shutil.copy2(path, dest)
+    return target_dir
+
+
+def _compute_raw_hash(raw_csv: Path, sdf_paths: Iterable[Path]) -> Optional[str]:
+    paths = [raw_csv]
+    for path in sdf_paths:
+        if path.exists():
+            paths.append(path)
+    return hash_files(paths) if paths else None
+
+
+def run(cfg: Dict[str, Any]) -> Path:
+    validate_config(cfg)
+
+    output_cfg = cfg.get(\"output\", {}) or {}
+    experiment_cfg = cfg.get(\"experiment\", {}) or {}
+    exp_name = str(output_cfg.get(\"exp_name\", experiment_cfg.get(\"name\", \"collect_data\")))
+    run_dir = ensure_dir(Path(output_cfg.get(\"run_dir\", \"runs/collect_data\")) / exp_name)
+    raw_dir = ensure_dir(run_dir / \"raw\")
+
+    logger = get_logger(\"collect_data\", log_file=run_dir / \"collect_data.log\")
+
+    dump_yaml(run_dir / \"config.yaml\", cfg)
+
+    collection_cfg = cfg.get(\"data_collection\", {}) or {}
+    source_cfg = cfg.get(\"data_source\", {}) or {}
+
+    source_name = str(source_cfg.get(\"name\", \"\")).strip()
+    if not source_name:
+        raise ValueError(\"data_source.name is required\")
+
+    cache_cfg = collection_cfg.get(\"cache\", {}) or {}
+    cache = None
+    if bool(cache_cfg.get(\"enabled\", False)):
+        cache_dir = cache_cfg.get(\"dir\", \".cache/data_collection\")
+        cache = FileCache(cache_dir)
+
+    query = _parse_query(source_cfg, collection_cfg)
+    data_source = create_data_source(source_name, source_cfg, collection_cfg, cache)
+
+    formatter_cfg = source_cfg.get(\"formatter\", {}) or {}
+    formatter_cfg.setdefault(\"sample_id_column\", collection_cfg.get(\"sample_id_column\", \"sample_id\"))
+    result = data_source.collect(query, formatter_cfg, logger)
+
+    required_columns = collection_cfg.get(\"required_columns\", []) or []
+    if required_columns:
+        missing = [col for col in required_columns if col not in result.table.columns]
+        if missing:
+            logger.warning(\"Missing required columns in collected table: %s\", \", \".join(missing))
+
+    output_spec = collection_cfg.get(\"output\", {}) or {}
+    raw_csv_name = str(output_spec.get(\"raw_csv_name\", \"raw.csv\"))
+    sdf_dir_name = str(output_spec.get(\"sdf_dir_name\", \"sdf_files\"))
+
+    raw_csv_path = raw_dir / raw_csv_name
+    write_csv(result.table, raw_csv_path)
+
+    sdf_dir = raw_dir / sdf_dir_name
+    sdf_paths = _write_sdf_records(sdf_dir, result.sdf_records, overwrite=bool(output_spec.get(\"overwrite\", False)))
+
+    export_cfg = collection_cfg.get(\"export\", {}) or {}
+    export_enabled = bool(export_cfg.get(\"enabled\", False))
+    overwrite_export = bool(export_cfg.get(\"overwrite\", False))
+    if export_enabled:
+        _maybe_export(raw_csv_path, export_cfg.get(\"raw_csv\"), overwrite_export)
+        if sdf_paths:
+            _maybe_export_dir(sdf_dir, export_cfg.get(\"sdf_dir\"), overwrite_export)
+
+    dataset_hash = _compute_raw_hash(raw_csv_path, sdf_paths)
+    meta = build_meta(
+        process_name=str(cfg.get(\"process\", {}).get(\"name\", \"collect_data\")),
+        cfg=cfg,
+        dataset_hash=dataset_hash,
+        extra={\"data_source\": source_name},
+    )
+    save_meta(run_dir, meta)
+
+    logger.info(\"Collected %d rows.\", len(result.table))
+    return run_dir
+EOF" in /Users/kawahito/Desktop/LJ_prediction succeeded in 301ms:
+
+
+thinking
+**Creating data collection script**
+exec
+/bin/zsh -lc "cat <<'EOF' > scripts/collect_data.py
+from __future__ import annotations
+
+import argparse
+import sys
+from pathlib import Path
+
+# Allow running as "'`python scripts/collect_data.py ...` without installing the package.
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from src.common.config import load_config
+from src.data_collection.runner import run
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(description="Collect raw data from external sources.")
+    ap.add_argument("--config", required=True, help="Path to a composed collect_data config.")
+    args = ap.parse_args()
+
+    cfg = load_config(args.config)
+    run(cfg)
+
+
+if __name__ == "__main__":
+    main()
+EOF' in /Users/kawahito/Desktop/LJ_prediction succeeded in 268ms:
+
+
+thinking
+**Adding configuration directories**
+exec
+/bin/zsh -lc 'mkdir -p configs/data_collection configs/data_source' in /Users/kawahito/Desktop/LJ_prediction succeeded in 272ms:
+
+
+thinking
+**Creating new YAML configuration**
+exec
+/bin/zsh -lc "cat <<'EOF' > configs/process/collect_data.yaml
+process:
+  name: \"collect_data\"
+  kind: \"data_collection\"
+
+output:
+  run_dir: \"runs/collect_data\"
+EOF" in /Users/kawahito/Desktop/LJ_prediction succeeded in 268ms:
+
+
+thinking
+**Creating default YAML config**
+exec
+/bin/zsh -lc "cat <<'EOF' > configs/data_collection/default.yaml
+data_collection:
+  query:
+    identifiers: []
+    filters: {}
+    limit: null
+  required_columns: [\"CAS\", \"MolecularFormula\", \"Tc [K]\", \"Pc [Pa]\", \"Tb [K]\"]
+  sample_id_column: \"sample_id\"
+  cache:
+    enabled: false
+    dir: \".cache/data_collection\"
+  output:
+    raw_csv_name: \"tc_pc_tb_pubchem.csv\"
+    sdf_dir_name: \"sdf_files\"
+    overwrite: false
+  export:
+    enabled: false
+    raw_csv: \"data/raw/tc_pc_tb_pubchem.csv\"
+    sdf_dir: \"data/raw/sdf_files\"
+    overwrite: false
+EOF" in /Users/kawahito/Desktop/LJ_prediction succeeded in 275ms:
+
+
+thinking
+**Creating dummy data source config**
+exec
+/bin/zsh -lc "cat <<'EOF' > configs/data_source/dummy.yaml
+data_source:
+  name: \"dummy\"
+  client:
+    records: []
+  formatter:
+    column_map:
+      CAS: \"cas\"
+      MolecularFormula: \"formula\"
+      \"Tc [K]\": \"tc_k\"
+      \"Pc [Pa]\": \"pc_pa\"
+      \"Tb [K]\": \"tb_k\"
+    passthrough_fields: [\"source\"]
+EOF" in /Users/kawahito/Desktop/LJ_prediction succeeded in 319ms:
+
+
+thinking
+**Creating collect_data.yaml config**
+exec
+/bin/zsh -lc "cat <<'EOF' > configs/collect_data.yaml
+defaults:
+  - process: collect_data
+  - data_collection: default
+  - data_source: dummy
+  - hydra: default
+  - _self_
+
+experiment:
+  name: \"collect_data_stub\"
+
+output:
+  exp_name: \"collect_data_stub\"
+EOF" in /Users/kawahito/Desktop/LJ_prediction succeeded in 265ms:
+
+
+thinking
+**Updating validation for collect_data**
+file update
+M /Users/kawahito/Desktop/LJ_prediction/src/utils/validate_config.py
+@@ -53 +53,5 @@
+         return
++
++    if process_name == "collect_data":
++        _require_keys(cfg, ["data_collection", "data_source", "output"], f"{process_name} config")
++        return
+apply_patch(auto_approved=true) exited 0 in 25ms:
+Success. Updated the following files:
+M src/utils/validate_config.py
+file update:
+diff --git a/src/utils/validate_config.py b/src/utils/validate_config.py
+index 053ec999f8adf4053873f3530760c8b282109ecb..c98e38e4529f8c8ed964a5dc9f5f1b68d6a3856c
+--- a/src/utils/validate_config.py
++++ b/src/utils/validate_config.py
+@@ -51,3 +51,7 @@
+     if process_name == "audit_dataset":
+         _require_keys(cfg, ["audit", "output"], f"{process_name} config")
+         return
++
++    if process_name == "collect_data":
++        _require_keys(cfg, ["data_collection", "data_source", "output"], f"{process_name} config")
++        return
+
+file update:
+diff --git a/src/utils/validate_config.py b/src/utils/validate_config.py
+index 053ec999f8adf4053873f3530760c8b282109ecb..c98e38e4529f8c8ed964a5dc9f5f1b68d6a3856c
+--- a/src/utils/validate_config.py
++++ b/src/utils/validate_config.py
+@@ -51,3 +51,7 @@
+     if process_name == "audit_dataset":
+         _require_keys(cfg, ["audit", "output"], f"{process_name} config")
+         return
++
++    if process_name == "collect_data":
++        _require_keys(cfg, ["data_collection", "data_source", "output"], f"{process_name} config")
++        return
+
+
+thinking
+**Reviewing and improving MappingFormatter usage**
+
+I’m examining how the MappingFormatter’s format method currently ignores the cfg parameter, which the base interface requires. To make usage clearer and more flexible, I’ll update format and internal methods to optionally override instance settings with values from cfg, allowing per-call customization without altering the instance. This feels like a neat refinement to avoid confusion and keep the interface consistent.
+file update
+M /Users/kawahito/Desktop/LJ_prediction/src/data_collection/formatters/mapping.py
+@@ -18,4 +18,12 @@
+ 
+-    def _build_rows(self, records: List[Dict[str, Any]], logger) -> pd.DataFrame:
+-        if not self.column_map:
++    def _build_rows(
++        self,
++        records: List[Dict[str, Any]],
++        column_map: Dict[str, str],
++        passthrough_fields: List[str],
++        sample_id_column: str,
++        missing_value: Any,
++        logger,
++    ) -> pd.DataFrame:
++        if not column_map:
+             logger.warning("MappingFormatter column_map is empty; using raw keys as output columns.")
+@@ -27,3 +35,3 @@
+                 row = {}
+-                for out_col, raw_key in self.column_map.items():
++                for out_col, raw_key in column_map.items():
+                     if raw_key in record:
+@@ -31,5 +39,5 @@
+                     else:
+-                        row[out_col] = self.missing_value
++                        row[out_col] = missing_value
+                         missing[raw_key] += 1
+-                for field in self.passthrough_fields:
++                for field in passthrough_fields:
+                     if field in record:
+@@ -42,9 +50,9 @@
+ 
+-        if self.sample_id_column not in df.columns:
+-            df[self.sample_id_column] = [f"sample_{i:06d}" for i in range(len(df))]
++        if sample_id_column not in df.columns:
++            df[sample_id_column] = [f"sample_{i:06d}" for i in range(len(df))]
+         else:
+-            missing_mask = df[self.sample_id_column].isna() | (df[self.sample_id_column].astype(str).str.strip() == "")
++            missing_mask = df[sample_id_column].isna() | (df[sample_id_column].astype(str).str.strip() == "")
+             if missing_mask.any():
+                 fill_ids = [f"sample_{i:06d}" for i in range(len(df))]
+-                df.loc[missing_mask, self.sample_id_column] = [fill_ids[i] for i in df.index[missing_mask]]
++                df.loc[missing_mask, sample_id_column] = [fill_ids[i] for i in df.index[missing_mask]]
+         return df
+@@ -52,3 +60,15 @@
+     def format(self, payload: RawPayload, cfg: Dict[str, Any], logger) -> DataCollectionResult:
+-        df = self._build_rows(payload.records, logger)
++        column_map = dict(cfg.get("column_map", self.column_map) or {})
++        passthrough_fields = list(cfg.get("passthrough_fields", self.passthrough_fields) or [])
++        sample_id_column = str(cfg.get("sample_id_column", self.sample_id_column))
++        missing_value = cfg.get("missing_value", self.missing_value)
++
++        df = self._build_rows(
++            payload.records,
++            column_map,
++            passthrough_fields,
++            sample_id_column,
++            missing_value,
++            logger,
++        )
+         return DataCollectionResult(table=df, sdf_records=payload.sdf_records, metadata=payload.metadata)
+apply_patch(auto_approved=true) exited 0 in 32ms:
+Success. Updated the following files:
+M src/data_collection/formatters/mapping.py
+file update:
+diff --git a/src/data_collection/formatters/mapping.py b/src/data_collection/formatters/mapping.py
+index f9f7e1ee992efe2cde49c5254c768685156d1e92..28a1ed18a61c284bd7fcbc90188ce625d001de50
+--- a/src/data_collection/formatters/mapping.py
++++ b/src/data_collection/formatters/mapping.py
+@@ -16,8 +16,16 @@
+         self.sample_id_column = str(cfg.get("sample_id_column", "sample_id"))
+         self.missing_value = cfg.get("missing_value", None)
+ 
+-    def _build_rows(self, records: List[Dict[str, Any]], logger) -> pd.DataFrame:
+-        if not self.column_map:
++    def _build_rows(
++        self,
++        records: List[Dict[str, Any]],
++        column_map: Dict[str, str],
++        passthrough_fields: List[str],
++        sample_id_column: str,
++        missing_value: Any,
++        logger,
++    ) -> pd.DataFrame:
++        if not column_map:
+             logger.warning("MappingFormatter column_map is empty; using raw keys as output columns.")
+             df = pd.DataFrame(records)
+         else:
+@@ -25,13 +33,13 @@
+             rows = []
+             for record in records:
+                 row = {}
+-                for out_col, raw_key in self.column_map.items():
++                for out_col, raw_key in column_map.items():
+                     if raw_key in record:
+                         row[out_col] = record.get(raw_key)
+                     else:
+-                        row[out_col] = self.missing_value
++                        row[out_col] = missing_value
+                         missing[raw_key] += 1
+-                for field in self.passthrough_fields:
++                for field in passthrough_fields:
+                     if field in record:
+                         row[field] = record.get(field)
+                 rows.append(row)
+@@ -40,15 +48,27 @@
+                 missing_keys = ", ".join(sorted(missing.keys()))
+                 logger.warning("Missing raw fields for mapping: %s", missing_keys)
+ 
+-        if self.sample_id_column not in df.columns:
+-            df[self.sample_id_column] = [f"sample_{i:06d}" for i in range(len(df))]
++        if sample_id_column not in df.columns:
++            df[sample_id_column] = [f"sample_{i:06d}" for i in range(len(df))]
+         else:
+-            missing_mask = df[self.sample_id_column].isna() | (df[self.sample_id_column].astype(str).str.strip() == "")
++            missing_mask = df[sample_id_column].isna() | (df[sample_id_column].astype(str).str.strip() == "")
+             if missing_mask.any():
+                 fill_ids = [f"sample_{i:06d}" for i in range(len(df))]
+-                df.loc[missing_mask, self.sample_id_column] = [fill_ids[i] for i in df.index[missing_mask]]
++                df.loc[missing_mask, sample_id_column] = [fill_ids[i] for i in df.index[missing_mask]]
+         return df
+ 
+     def format(self, payload: RawPayload, cfg: Dict[str, Any], logger) -> DataCollectionResult:
+-        df = self._build_rows(payload.records, logger)
++        column_map = dict(cfg.get("column_map", self.column_map) or {})
++        passthrough_fields = list(cfg.get("passthrough_fields", self.passthrough_fields) or [])
++        sample_id_column = str(cfg.get("sample_id_column", self.sample_id_column))
++        missing_value = cfg.get("missing_value", self.missing_value)
++
++        df = self._build_rows(
++            payload.records,
++            column_map,
++            passthrough_fields,
++            sample_id_column,
++            missing_value,
++            logger,
++        )
+         return DataCollectionResult(table=df, sdf_records=payload.sdf_records, metadata=payload.metadata)
+diff --git a/src/utils/validate_config.py b/src/utils/validate_config.py
+index 053ec999f8adf4053873f3530760c8b282109ecb..c98e38e4529f8c8ed964a5dc9f5f1b68d6a3856c
+--- a/src/utils/validate_config.py
++++ b/src/utils/validate_config.py
+@@ -51,3 +51,7 @@
+     if process_name == "audit_dataset":
+         _require_keys(cfg, ["audit", "output"], f"{process_name} config")
+         return
++
++    if process_name == "collect_data":
++        _require_keys(cfg, ["data_collection", "data_source", "output"], f"{process_name} config")
++        return
+
+file update:
+diff --git a/src/data_collection/formatters/mapping.py b/src/data_collection/formatters/mapping.py
+index f9f7e1ee992efe2cde49c5254c768685156d1e92..28a1ed18a61c284bd7fcbc90188ce625d001de50
+--- a/src/data_collection/formatters/mapping.py
++++ b/src/data_collection/formatters/mapping.py
+@@ -16,8 +16,16 @@
+         self.sample_id_column = str(cfg.get("sample_id_column", "sample_id"))
+         self.missing_value = cfg.get("missing_value", None)
+ 
+-    def _build_rows(self, records: List[Dict[str, Any]], logger) -> pd.DataFrame:
+-        if not self.column_map:
++    def _build_rows(
++        self,
++        records: List[Dict[str, Any]],
++        column_map: Dict[str, str],
++        passthrough_fields: List[str],
++        sample_id_column: str,
++        missing_value: Any,
++        logger,
++    ) -> pd.DataFrame:
++        if not column_map:
+             logger.warning("MappingFormatter column_map is empty; using raw keys as output columns.")
+             df = pd.DataFrame(records)
+         else:
+@@ -25,13 +33,13 @@
+             rows = []
+             for record in records:
+                 row = {}
+-                for out_col, raw_key in self.column_map.items():
++                for out_col, raw_key in column_map.items():
+                     if raw_key in record:
+                         row[out_col] = record.get(raw_key)
+                     else:
+-                        row[out_col] = self.missing_value
++                        row[out_col] = missing_value
+                         missing[raw_key] += 1
+-                for field in self.passthrough_fields:
++                for field in passthrough_fields:
+                     if field in record:
+                         row[field] = record.get(field)
+                 rows.append(row)
+@@ -40,15 +48,27 @@
+                 missing_keys = ", ".join(sorted(missing.keys()))
+                 logger.warning("Missing raw fields for mapping: %s", missing_keys)
+ 
+-        if self.sample_id_column not in df.columns:
+-            df[self.sample_id_column] = [f"sample_{i:06d}" for i in range(len(df))]
++        if sample_id_column not in df.columns:
++            df[sample_id_column] = [f"sample_{i:06d}" for i in range(len(df))]
+         else:
+-            missing_mask = df[self.sample_id_column].isna() | (df[self.sample_id_column].astype(str).str.strip() == "")
++            missing_mask = df[sample_id_column].isna() | (df[sample_id_column].astype(str).str.strip() == "")
+             if missing_mask.any():
+                 fill_ids = [f"sample_{i:06d}" for i in range(len(df))]
+-                df.loc[missing_mask, self.sample_id_column] = [fill_ids[i] for i in df.index[missing_mask]]
++                df.loc[missing_mask, sample_id_column] = [fill_ids[i] for i in df.index[missing_mask]]
+         return df
+ 
+     def format(self, payload: RawPayload, cfg: Dict[str, Any], logger) -> DataCollectionResult:
+-        df = self._build_rows(payload.records, logger)
++        column_map = dict(cfg.get("column_map", self.column_map) or {})
++        passthrough_fields = list(cfg.get("passthrough_fields", self.passthrough_fields) or [])
++        sample_id_column = str(cfg.get("sample_id_column", self.sample_id_column))
++        missing_value = cfg.get("missing_value", self.missing_value)
++
++        df = self._build_rows(
++            payload.records,
++            column_map,
++            passthrough_fields,
++            sample_id_column,
++            missing_value,
++            logger,
++        )
+         return DataCollectionResult(table=df, sdf_records=payload.sdf_records, metadata=payload.metadata)
+diff --git a/src/utils/validate_config.py b/src/utils/validate_config.py
+index 053ec999f8adf4053873f3530760c8b282109ecb..c98e38e4529f8c8ed964a5dc9f5f1b68d6a3856c
+--- a/src/utils/validate_config.py
++++ b/src/utils/validate_config.py
+@@ -51,3 +51,7 @@
+     if process_name == "audit_dataset":
+         _require_keys(cfg, ["audit", "output"], f"{process_name} config")
+         return
++
++    if process_name == "collect_data":
++        _require_keys(cfg, ["data_collection", "data_source", "output"], f"{process_name} config")
++        return
+
+
+thinking
+**Preparing data collection tests**
+exec
+/bin/zsh -lc "cat <<'EOF' > tests/test_data_collection.py
+from __future__ import annotations
+
+from pathlib import Path
+
+import pandas as pd
+
+from src.data_collection.runner import run
+
+
+def test_collect_data_dummy(tmp_path: Path) -> None:
+    cfg = {
+        \"process\": {\"name\": \"collect_data\"},
+        \"output\": {\"run_dir\": str(tmp_path / \"runs\"), \"exp_name\": \"dummy_run\"},
+        \"data_collection\": {
+            \"query\": {\"identifiers\": [\"64-17-5\"], \"limit\": 1},
+            \"required_columns\": [\"CAS\", \"MolecularFormula\", \"Tc [K]\"],
+            \"sample_id_column\": \"sample_id\",
+            \"cache\": {\"enabled\": False},
+            \"output\": {\"raw_csv_name\": \"raw.csv\", \"sdf_dir_name\": \"sdf_files\", \"overwrite\": True},
+            \"export\": {\"enabled\": False},
+        },
+        \"data_source\": {
+            \"name\": \"dummy\",
+            \"client\": {
+                \"records\": [
+                    {
+                        \"cas\": \"64-17-5\",
+                        \"formula\": \"C2H6O\",
+                        \"tc_k\": 514.0,
+                    }
+                ]
+            },
+            \"formatter\": {
+                \"column_map\": {
+                    \"CAS\": \"cas\",
+                    \"MolecularFormula\": \"formula\",
+                    \"Tc [K]\": \"tc_k\",
+                }
+            },
+        },
+    }
+
+    run_dir = run(cfg)
+    raw_csv = run_dir / \"raw\" / \"raw.csv\"
+
+    assert raw_csv.exists()
+    assert (run_dir / \"config.yaml\").exists()
+    assert (run_dir / \"meta.json\").exists()
+
+    df = pd.read_csv(raw_csv)
+    assert df.loc[0, \"CAS\"] == \"64-17-5\"
+    assert \"sample_id\" in df.columns
+EOF" in /Users/kawahito/Desktop/LJ_prediction succeeded in 286ms:
+
+file update:
+diff --git a/src/data_collection/formatters/mapping.py b/src/data_collection/formatters/mapping.py
+index f9f7e1ee992efe2cde49c5254c768685156d1e92..28a1ed18a61c284bd7fcbc90188ce625d001de50
+--- a/src/data_collection/formatters/mapping.py
++++ b/src/data_collection/formatters/mapping.py
+@@ -16,8 +16,16 @@
+         self.sample_id_column = str(cfg.get("sample_id_column", "sample_id"))
+         self.missing_value = cfg.get("missing_value", None)
+ 
+-    def _build_rows(self, records: List[Dict[str, Any]], logger) -> pd.DataFrame:
+-        if not self.column_map:
++    def _build_rows(
++        self,
++        records: List[Dict[str, Any]],
++        column_map: Dict[str, str],
++        passthrough_fields: List[str],
++        sample_id_column: str,
++        missing_value: Any,
++        logger,
++    ) -> pd.DataFrame:
++        if not column_map:
+             logger.warning("MappingFormatter column_map is empty; using raw keys as output columns.")
+             df = pd.DataFrame(records)
+         else:
+@@ -25,13 +33,13 @@
+             rows = []
+             for record in records:
+                 row = {}
+-                for out_col, raw_key in self.column_map.items():
++                for out_col, raw_key in column_map.items():
+                     if raw_key in record:
+                         row[out_col] = record.get(raw_key)
+                     else:
+-                        row[out_col] = self.missing_value
++                        row[out_col] = missing_value
+                         missing[raw_key] += 1
+-                for field in self.passthrough_fields:
++                for field in passthrough_fields:
+                     if field in record:
+                         row[field] = record.get(field)
+                 rows.append(row)
+@@ -40,15 +48,27 @@
+                 missing_keys = ", ".join(sorted(missing.keys()))
+                 logger.warning("Missing raw fields for mapping: %s", missing_keys)
+ 
+-        if self.sample_id_column not in df.columns:
+-            df[self.sample_id_column] = [f"sample_{i:06d}" for i in range(len(df))]
++        if sample_id_column not in df.columns:
++            df[sample_id_column] = [f"sample_{i:06d}" for i in range(len(df))]
+         else:
+-            missing_mask = df[self.sample_id_column].isna() | (df[self.sample_id_column].astype(str).str.strip() == "")
++            missing_mask = df[sample_id_column].isna() | (df[sample_id_column].astype(str).str.strip() == "")
+             if missing_mask.any():
+                 fill_ids = [f"sample_{i:06d}" for i in range(len(df))]
+-                df.loc[missing_mask, self.sample_id_column] = [fill_ids[i] for i in df.index[missing_mask]]
++                df.loc[missing_mask, sample_id_column] = [fill_ids[i] for i in df.index[missing_mask]]
+         return df
+ 
+     def format(self, payload: RawPayload, cfg: Dict[str, Any], logger) -> DataCollectionResult:
+-        df = self._build_rows(payload.records, logger)
++        column_map = dict(cfg.get("column_map", self.column_map) or {})
++        passthrough_fields = list(cfg.get("passthrough_fields", self.passthrough_fields) or [])
++        sample_id_column = str(cfg.get("sample_id_column", self.sample_id_column))
++        missing_value = cfg.get("missing_value", self.missing_value)
++
++        df = self._build_rows(
++            payload.records,
++            column_map,
++            passthrough_fields,
++            sample_id_column,
++            missing_value,
++            logger,
++        )
+         return DataCollectionResult(table=df, sdf_records=payload.sdf_records, metadata=payload.metadata)
+diff --git a/src/utils/validate_config.py b/src/utils/validate_config.py
+index 053ec999f8adf4053873f3530760c8b282109ecb..c98e38e4529f8c8ed964a5dc9f5f1b68d6a3856c
+--- a/src/utils/validate_config.py
++++ b/src/utils/validate_config.py
+@@ -51,3 +51,7 @@
+     if process_name == "audit_dataset":
+         _require_keys(cfg, ["audit", "output"], f"{process_name} config")
+         return
++
++    if process_name == "collect_data":
++        _require_keys(cfg, ["data_collection", "data_source", "output"], f"{process_name} config")
++        return
+
+
+thinking
+**Verifying data collection integration**
+
+I’m reviewing how the formatter configuration is passed and used across data source creation and collection to ensure consistency, noting a bit of redundancy but overall safety in override behavior. I’m also checking module registration via imports and config loading paths to confirm everything aligns well before moving on to run tests and finalize step 2.
+exec
+/bin/zsh -lc 'rg --files src/data_collection' in /Users/kawahito/Desktop/LJ_prediction succeeded in 356ms:
+src/data_collection/types.py
+src/data_collection/runner.py
+src/data_collection/formatters/__init__.py
+src/data_collection/utils.py
+src/data_collection/formatters/mapping.py
+src/data_collection/__init__.py
+src/data_collection/registry.py
+src/data_collection/cache.py
+src/data_collection/formatters/base.py
+src/data_collection/sources/base.py
+src/data_collection/sources/dummy.py
+src/data_collection/sources/__init__.py
+src/data_collection/clients/base.py
+src/data_collection/clients/dummy.py
+src/data_collection/clients/__init__.py
+file update:
+diff --git a/src/data_collection/formatters/mapping.py b/src/data_collection/formatters/mapping.py
+index f9f7e1ee992efe2cde49c5254c768685156d1e92..28a1ed18a61c284bd7fcbc90188ce625d001de50
+--- a/src/data_collection/formatters/mapping.py
++++ b/src/data_collection/formatters/mapping.py
+@@ -16,8 +16,16 @@
+         self.sample_id_column = str(cfg.get("sample_id_column", "sample_id"))
+         self.missing_value = cfg.get("missing_value", None)
+ 
+-    def _build_rows(self, records: List[Dict[str, Any]], logger) -> pd.DataFrame:
+-        if not self.column_map:
++    def _build_rows(
++        self,
++        records: List[Dict[str, Any]],
++        column_map: Dict[str, str],
++        passthrough_fields: List[str],
++        sample_id_column: str,
++        missing_value: Any,
++        logger,
++    ) -> pd.DataFrame:
++        if not column_map:
+             logger.warning("MappingFormatter column_map is empty; using raw keys as output columns.")
+             df = pd.DataFrame(records)
+         else:
+@@ -25,13 +33,13 @@
+             rows = []
+             for record in records:
+                 row = {}
+-                for out_col, raw_key in self.column_map.items():
++                for out_col, raw_key in column_map.items():
+                     if raw_key in record:
+                         row[out_col] = record.get(raw_key)
+                     else:
+-                        row[out_col] = self.missing_value
++                        row[out_col] = missing_value
+                         missing[raw_key] += 1
+-                for field in self.passthrough_fields:
++                for field in passthrough_fields:
+                     if field in record:
+                         row[field] = record.get(field)
+                 rows.append(row)
+@@ -40,15 +48,27 @@
+                 missing_keys = ", ".join(sorted(missing.keys()))
+                 logger.warning("Missing raw fields for mapping: %s", missing_keys)
+ 
+-        if self.sample_id_column not in df.columns:
+-            df[self.sample_id_column] = [f"sample_{i:06d}" for i in range(len(df))]
++        if sample_id_column not in df.columns:
++            df[sample_id_column] = [f"sample_{i:06d}" for i in range(len(df))]
+         else:
+-            missing_mask = df[self.sample_id_column].isna() | (df[self.sample_id_column].astype(str).str.strip() == "")
++            missing_mask = df[sample_id_column].isna() | (df[sample_id_column].astype(str).str.strip() == "")
+             if missing_mask.any():
+                 fill_ids = [f"sample_{i:06d}" for i in range(len(df))]
+-                df.loc[missing_mask, self.sample_id_column] = [fill_ids[i] for i in df.index[missing_mask]]
++                df.loc[missing_mask, sample_id_column] = [fill_ids[i] for i in df.index[missing_mask]]
+         return df
+ 
+     def format(self, payload: RawPayload, cfg: Dict[str, Any], logger) -> DataCollectionResult:
+-        df = self._build_rows(payload.records, logger)
++        column_map = dict(cfg.get("column_map", self.column_map) or {})
++        passthrough_fields = list(cfg.get("passthrough_fields", self.passthrough_fields) or [])
++        sample_id_column = str(cfg.get("sample_id_column", self.sample_id_column))
++        missing_value = cfg.get("missing_value", self.missing_value)
++
++        df = self._build_rows(
++            payload.records,
++            column_map,
++            passthrough_fields,
++            sample_id_column,
++            missing_value,
++            logger,
++        )
+         return DataCollectionResult(table=df, sdf_records=payload.sdf_records, metadata=payload.metadata)
+diff --git a/src/utils/validate_config.py b/src/utils/validate_config.py
+index 053ec999f8adf4053873f3530760c8b282109ecb..c98e38e4529f8c8ed964a5dc9f5f1b68d6a3856c
+--- a/src/utils/validate_config.py
++++ b/src/utils/validate_config.py
+@@ -51,3 +51,7 @@
+     if process_name == "audit_dataset":
+         _require_keys(cfg, ["audit", "output"], f"{process_name} config")
+         return
++
++    if process_name == "collect_data":
++        _require_keys(cfg, ["data_collection", "data_source", "output"], f"{process_name} config")
++        return
+
+
+thinking
+**Updating plan statuses**
+Plan update
+  ✓ Review existing process/config patterns and data contracts for collect_data alignment
+  ✓ Implement data_collection module (client/formatter/cache/registry), collect_data script, and configs
+  → Add unit tests + update queue status after validation
+file update:
+diff --git a/src/data_collection/formatters/mapping.py b/src/data_collection/formatters/mapping.py
+index f9f7e1ee992efe2cde49c5254c768685156d1e92..28a1ed18a61c284bd7fcbc90188ce625d001de50
+--- a/src/data_collection/formatters/mapping.py
++++ b/src/data_collection/formatters/mapping.py
+@@ -16,8 +16,16 @@
+         self.sample_id_column = str(cfg.get("sample_id_column", "sample_id"))
+         self.missing_value = cfg.get("missing_value", None)
+ 
+-    def _build_rows(self, records: List[Dict[str, Any]], logger) -> pd.DataFrame:
+-        if not self.column_map:
++    def _build_rows(
++        self,
++        records: List[Dict[str, Any]],
++        column_map: Dict[str, str],
++        passthrough_fields: List[str],
++        sample_id_column: str,
++        missing_value: Any,
++        logger,
++    ) -> pd.DataFrame:
++        if not column_map:
+             logger.warning("MappingFormatter column_map is empty; using raw keys as output columns.")
+             df = pd.DataFrame(records)
+         else:
+@@ -25,13 +33,13 @@
+             rows = []
+             for record in records:
+                 row = {}
+-                for out_col, raw_key in self.column_map.items():
++                for out_col, raw_key in column_map.items():
+                     if raw_key in record:
+                         row[out_col] = record.get(raw_key)
+                     else:
+-                        row[out_col] = self.missing_value
++                        row[out_col] = missing_value
+                         missing[raw_key] += 1
+-                for field in self.passthrough_fields:
++                for field in passthrough_fields:
+                     if field in record:
+                         row[field] = record.get(field)
+                 rows.append(row)
+@@ -40,15 +48,27 @@
+                 missing_keys = ", ".join(sorted(missing.keys()))
+                 logger.warning("Missing raw fields for mapping: %s", missing_keys)
+ 
+-        if self.sample_id_column not in df.columns:
+-            df[self.sample_id_column] = [f"sample_{i:06d}" for i in range(len(df))]
++        if sample_id_column not in df.columns:
++            df[sample_id_column] = [f"sample_{i:06d}" for i in range(len(df))]
+         else:
+-            missing_mask = df[self.sample_id_column].isna() | (df[self.sample_id_column].astype(str).str.strip() == "")
++            missing_mask = df[sample_id_column].isna() | (df[sample_id_column].astype(str).str.strip() == "")
+             if missing_mask.any():
+                 fill_ids = [f"sample_{i:06d}" for i in range(len(df))]
+-                df.loc[missing_mask, self.sample_id_column] = [fill_ids[i] for i in df.index[missing_mask]]
++                df.loc[missing_mask, sample_id_column] = [fill_ids[i] for i in df.index[missing_mask]]
+         return df
+ 
+     def format(self, payload: RawPayload, cfg: Dict[str, Any], logger) -> DataCollectionResult:
+-        df = self._build_rows(payload.records, logger)
++        column_map = dict(cfg.get("column_map", self.column_map) or {})
++        passthrough_fields = list(cfg.get("passthrough_fields", self.passthrough_fields) or [])
++        sample_id_column = str(cfg.get("sample_id_column", self.sample_id_column))
++        missing_value = cfg.get("missing_value", self.missing_value)
++
++        df = self._build_rows(
++            payload.records,
++            column_map,
++            passthrough_fields,
++            sample_id_column,
++            missing_value,
++            logger,
++        )
+         return DataCollectionResult(table=df, sdf_records=payload.sdf_records, metadata=payload.metadata)
+diff --git a/src/utils/validate_config.py b/src/utils/validate_config.py
+index 053ec999f8adf4053873f3530760c8b282109ecb..c98e38e4529f8c8ed964a5dc9f5f1b68d6a3856c
+--- a/src/utils/validate_config.py
++++ b/src/utils/validate_config.py
+@@ -51,3 +51,7 @@
+     if process_name == "audit_dataset":
+         _require_keys(cfg, ["audit", "output"], f"{process_name} config")
+         return
++
++    if process_name == "collect_data":
++        _require_keys(cfg, ["data_collection", "data_source", "output"], f"{process_name} config")
++        return
+
+
+thinking
+**Running data_collection tests**
+exec
+/bin/zsh -lc 'pytest -k data_collection' in /Users/kawahito/Desktop/LJ_prediction exited 2 in 2.97s:
+============================= test session starts ==============================
+platform darwin -- Python 3.10.8, pytest-9.0.1, pluggy-1.6.0
+rootdir: /Users/kawahito/Desktop/LJ_prediction
+collected 12 items / 1 error / 12 deselected / 0 selected
+
+==================================== ERRORS ====================================
+________________ ERROR collecting tests/test_data_collection.py ________________
+ImportError while importing test module '/Users/kawahito/Desktop/LJ_prediction/tests/test_data_collection.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/Library/Frameworks/Python.framework/Versions/3.10/lib/python3.10/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+tests/test_data_collection.py:7: in <module>
+    from src.data_collection.runner import run
+src/data_collection/__init__.py:3: in <module>
+    from src.data_collection.registry import create_data_source, register_data_source
+src/data_collection/registry.py:6: in <module>
+    from src.data_collection.sources.base import DataSource
+src/data_collection/sources/__init__.py:3: in <module>
+    from src.data_collection.sources.dummy import build_dummy_source
+file update:
+diff --git a/src/data_collection/formatters/mapping.py b/src/data_collection/formatters/mapping.py
+index f9f7e1ee992efe2cde49c5254c768685156d1e92..28a1ed18a61c284bd7fcbc90188ce625d001de50
+--- a/src/data_collection/formatters/mapping.py
++++ b/src/data_collection/formatters/mapping.py
+@@ -16,8 +16,16 @@
+         self.sample_id_column = str(cfg.get("sample_id_column", "sample_id"))
+         self.missing_value = cfg.get("missing_value", None)
+ 
+-    def _build_rows(self, records: List[Dict[str, Any]], logger) -> pd.DataFrame:
+-        if not self.column_map:
++    def _build_rows(
++        self,
++        records: List[Dict[str, Any]],
++        column_map: Dict[str, str],
++        passthrough_fields: List[str],
++        sample_id_column: str,
++        missing_value: Any,
++        logger,
++    ) -> pd.DataFrame:
++        if not column_map:
+             logger.warning("MappingFormatter column_map is empty; using raw keys as output columns.")
+             df = pd.DataFrame(records)
+         else:
+@@ -25,13 +33,13 @@
+             rows = []
+             for record in records:
+                 row = {}
+-                for out_col, raw_key in self.column_map.items():
++                for out_col, raw_key in column_map.items():
+                     if raw_key in record:
+                         row[out_col] = record.get(raw_key)
+                     else:
+-                        row[out_col] = self.missing_value
++                        row[out_col] = missing_value
+                         missing[raw_key] += 1
+-                for field in self.passthrough_fields:
++                for field in passthrough_fields:
+                     if field in record:
+                         row[field] = record.get(field)
+                 rows.append(row)
+@@ -40,15 +48,27 @@
+                 missing_keys = ", ".join(sorted(missing.keys()))
+                 logger.warning("Missing raw fields for mapping: %s", missing_keys)
+ 
+-        if self.sample_id_column not in df.columns:
+-            df[self.sample_id_column] = [f"sample_{i:06d}" for i in range(len(df))]
++        if sample_id_column not in df.columns:
++            df[sample_id_column] = [f"sample_{i:06d}" for i in range(len(df))]
+         else:
+-            missing_mask = df[self.sample_id_column].isna() | (df[self.sample_id_column].astype(str).str.strip() == "")
++            missing_mask = df[sample_id_column].isna() | (df[sample_id_column].astype(str).str.strip() == "")
+             if missing_mask.any():
+                 fill_ids = [f"sample_{i:06d}" for i in range(len(df))]
+-                df.loc[missing_mask, self.sample_id_column] = [fill_ids[i] for i in df.index[missing_mask]]
++                df.loc[missing_mask, sample_id_column] = [fill_ids[i] for i in df.index[missing_mask]]
+         return df
+ 
+     def format(self, payload: RawPayload, cfg: Dict[str, Any], logger) -> DataCollectionResult:
+-        df = self._build_rows(payload.records, logger)
++        column_map = dict(cfg.get("column_map", self.column_map) or {})
++        passthrough_fields = list(cfg.get("passthrough_fields", self.passthrough_fields) or [])
++        sample_id_column = str(cfg.get("sample_id_column", self.sample_id_column))
++        missing_value = cfg.get("missing_value", self.missing_value)
++
++        df = self._build_rows(
++            payload.records,
++            column_map,
++            passthrough_fields,
++            sample_id_column,
++            missing_value,
++            logger,
++        )
+         return DataCollectionResult(table=df, sdf_records=payload.sdf_records, metadata=payload.metadata)
+diff --git a/src/utils/validate_config.py b/src/utils/validate_config.py
+index 053ec999f8adf4053873f3530760c8b282109ecb..c98e38e4529f8c8ed964a5dc9f5f1b68d6a3856c
+--- a/src/utils/validate_config.py
++++ b/src/utils/validate_config.py
+@@ -51,3 +51,7 @@
+     if process_name == "audit_dataset":
+         _require_keys(cfg, ["audit", "output"], f"{process_name} config")
+         return
++
++    if process_name == "collect_data":
++        _require_keys(cfg, ["data_collection", "data_source", "output"], f"{process_name} config")
++        return
+
+
+thinking
+**Analyzing and resolving circular import issue**
+
+I'm untangling a tricky circular import caused by `sources/__init__.py` importing the `dummy` module, which in turn imports from `registry` before it's fully initialized. I see that importing `DataSource` from `sources.base` in `registry` triggers `sources/__init__.py`, causing the cycle. To fix this, I'm planning to remove the import of `dummy` from `sources/__init__.py` to keep it minimal, then explicitly import `dummy` within `registry` using a function like `_load_builtin_sources`. This should break the circular dependency and keep registrations working smoothly.
+file update
+M /Users/kawahito/Desktop/LJ_prediction/src/data_collection/sources/__init__.py
+@@ -2,4 +2,2 @@
+ 
+-from src.data_collection.sources.dummy import build_dummy_source
+-
+-__all__ = ["build_dummy_source"]
++__all__: list[str] = []
+apply_patch(auto_approved=true) exited 0 in 53ms:
+Success. Updated the following files:
+M src/data_collection/sources/__init__.py
+file update:
+diff --git a/src/data_collection/formatters/mapping.py b/src/data_collection/formatters/mapping.py
+index f9f7e1ee992efe2cde49c5254c768685156d1e92..28a1ed18a61c284bd7fcbc90188ce625d001de50
+--- a/src/data_collection/formatters/mapping.py
++++ b/src/data_collection/formatters/mapping.py
+@@ -16,8 +16,16 @@
+         self.sample_id_column = str(cfg.get("sample_id_column", "sample_id"))
+         self.missing_value = cfg.get("missing_value", None)
+ 
+-    def _build_rows(self, records: List[Dict[str, Any]], logger) -> pd.DataFrame:
+-        if not self.column_map:
++    def _build_rows(
++        self,
++        records: List[Dict[str, Any]],
++        column_map: Dict[str, str],
++        passthrough_fields: List[str],
++        sample_id_column: str,
++        missing_value: Any,
++        logger,
++    ) -> pd.DataFrame:
++        if not column_map:
+             logger.warning("MappingFormatter column_map is empty; using raw keys as output columns.")
+             df = pd.DataFrame(records)
+         else:
+@@ -25,13 +33,13 @@
+             rows = []
+             for record in records:
+                 row = {}
+-                for out_col, raw_key in self.column_map.items():
++                for out_col, raw_key in column_map.items():
+                     if raw_key in record:
+                         row[out_col] = record.get(raw_key)
+                     else:
+-                        row[out_col] = self.missing_value
++                        row[out_col] = missing_value
+                         missing[raw_key] += 1
+-                for field in self.passthrough_fields:
++                for field in passthrough_fields:
+                     if field in record:
+                         row[field] = record.get(field)
+                 rows.append(row)
+@@ -40,15 +48,27 @@
+                 missing_keys = ", ".join(sorted(missing.keys()))
+                 logger.warning("Missing raw fields for mapping: %s", missing_keys)
+ 
+-        if self.sample_id_column not in df.columns:
+-            df[self.sample_id_column] = [f"sample_{i:06d}" for i in range(len(df))]
++        if sample_id_column not in df.columns:
++            df[sample_id_column] = [f"sample_{i:06d}" for i in range(len(df))]
+         else:
+-            missing_mask = df[self.sample_id_column].isna() | (df[self.sample_id_column].astype(str).str.strip() == "")
++            missing_mask = df[sample_id_column].isna() | (df[sample_id_column].astype(str).str.strip() == "")
+             if missing_mask.any():
+                 fill_ids = [f"sample_{i:06d}" for i in range(len(df))]
+-                df.loc[missing_mask, self.sample_id_column] = [fill_ids[i] for i in df.index[missing_mask]]
++                df.loc[missing_mask, sample_id_column] = [fill_ids[i] for i in df.index[missing_mask]]
+         return df
+ 
+     def format(self, payload: RawPayload, cfg: Dict[str, Any], logger) -> DataCollectionResult:
+-        df = self._build_rows(payload.records, logger)
++        column_map = dict(cfg.get("column_map", self.column_map) or {})
++        passthrough_fields = list(cfg.get("passthrough_fields", self.passthrough_fields) or [])
++        sample_id_column = str(cfg.get("sample_id_column", self.sample_id_column))
++        missing_value = cfg.get("missing_value", self.missing_value)
++
++        df = self._build_rows(
++            payload.records,
++            column_map,
++            passthrough_fields,
++            sample_id_column,
++            missing_value,
++            logger,
++        )
+         return DataCollectionResult(table=df, sdf_records=payload.sdf_records, metadata=payload.metadata)
+diff --git a/src/data_collection/sources/__init__.py b/src/data_collection/sources/__init__.py
+index 8363402bd20026cd370b61d37678a58e0754c6df..bdec2fc8c46f03040519d76757f9e7c26dec2a31
+--- a/src/data_collection/sources/__init__.py
++++ b/src/data_collection/sources/__init__.py
+@@ -1,5 +1,3 @@
+ from __future__ import annotations
+ 
+-from src.data_collection.sources.dummy import build_dummy_source
+-
+-__all__ = ["build_dummy_source"]
++__all__: list[str] = []
+diff --git a/src/utils/validate_config.py b/src/utils/validate_config.py
+index 053ec999f8adf4053873f3530760c8b282109ecb..c98e38e4529f8c8ed964a5dc9f5f1b68d6a3856c
+--- a/src/utils/validate_config.py
++++ b/src/utils/validate_config.py
+@@ -51,3 +51,7 @@
+     if process_name == "audit_dataset":
+         _require_keys(cfg, ["audit", "output"], f"{process_name} config")
+         return
++
++    if process_name == "collect_data":
++        _require_keys(cfg, ["data_collection", "data_source", "output"], f"{process_name} config")
++        return
+
+file update:
+diff --git a/src/data_collection/formatters/mapping.py b/src/data_collection/formatters/mapping.py
+index f9f7e1ee992efe2cde49c5254c768685156d1e92..28a1ed18a61c284bd7fcbc90188ce625d001de50
+--- a/src/data_collection/formatters/mapping.py
++++ b/src/data_collection/formatters/mapping.py
+@@ -16,8 +16,16 @@
+         self.sample_id_column = str(cfg.get("sample_id_column", "sample_id"))
+         self.missing_value = cfg.get("missing_value", None)
+ 
+-    def _build_rows(self, records: List[Dict[str, Any]], logger) -> pd.DataFrame:
+-        if not self.column_map:
++    def _build_rows(
++        self,
++        records: List[Dict[str, Any]],
++        column_map: Dict[str, str],
++        passthrough_fields: List[str],
++        sample_id_column: str,
++        missing_value: Any,
++        logger,
++    ) -> pd.DataFrame:
++        if not column_map:
+             logger.warning("MappingFormatter column_map is empty; using raw keys as output columns.")
+             df = pd.DataFrame(records)
+         else:
+@@ -25,13 +33,13 @@
+             rows = []
+             for record in records:
+                 row = {}
+-                for out_col, raw_key in self.column_map.items():
++                for out_col, raw_key in column_map.items():
+                     if raw_key in record:
+                         row[out_col] = record.get(raw_key)
+                     else:
+-                        row[out_col] = self.missing_value
++                        row[out_col] = missing_value
+                         missing[raw_key] += 1
+-                for field in self.passthrough_fields:
++                for field in passthrough_fields:
+                     if field in record:
+                         row[field] = record.get(field)
+                 rows.append(row)
+@@ -40,15 +48,27 @@
+                 missing_keys = ", ".join(sorted(missing.keys()))
+                 logger.warning("Missing raw fields for mapping: %s", missing_keys)
+ 
+-        if self.sample_id_column not in df.columns:
+-            df[self.sample_id_column] = [f"sample_{i:06d}" for i in range(len(df))]
++        if sample_id_column not in df.columns:
++            df[sample_id_column] = [f"sample_{i:06d}" for i in range(len(df))]
+         else:
+-            missing_mask = df[self.sample_id_column].isna() | (df[self.sample_id_column].astype(str).str.strip() == "")
++            missing_mask = df[sample_id_column].isna() | (df[sample_id_column].astype(str).str.strip() == "")
+             if missing_mask.any():
+                 fill_ids = [f"sample_{i:06d}" for i in range(len(df))]
+-                df.loc[missing_mask, self.sample_id_column] = [fill_ids[i] for i in df.index[missing_mask]]
++                df.loc[missing_mask, sample_id_column] = [fill_ids[i] for i in df.index[missing_mask]]
+         return df
+ 
+     def format(self, payload: RawPayload, cfg: Dict[str, Any], logger) -> DataCollectionResult:
+-        df = self._build_rows(payload.records, logger)
++        column_map = dict(cfg.get("column_map", self.column_map) or {})
++        passthrough_fields = list(cfg.get("passthrough_fields", self.passthrough_fields) or [])
++        sample_id_column = str(cfg.get("sample_id_column", self.sample_id_column))
++        missing_value = cfg.get("missing_value", self.missing_value)
++
++        df = self._build_rows(
++            payload.records,
++            column_map,
++            passthrough_fields,
++            sample_id_column,
++            missing_value,
++            logger,
++        )
+         return DataCollectionResult(table=df, sdf_records=payload.sdf_records, metadata=payload.metadata)
+diff --git a/src/data_collection/sources/__init__.py b/src/data_collection/sources/__init__.py
+index 8363402bd20026cd370b61d37678a58e0754c6df..bdec2fc8c46f03040519d76757f9e7c26dec2a31
+--- a/src/data_collection/sources/__init__.py
++++ b/src/data_collection/sources/__init__.py
+@@ -1,5 +1,3 @@
+ from __future__ import annotations
+ 
+-from src.data_collection.sources.dummy import build_dummy_source
+-
+-__all__ = ["build_dummy_source"]
++__all__: list[str] = []
+diff --git a/src/utils/validate_config.py b/src/utils/validate_config.py
+index 053ec999f8adf4053873f3530760c8b282109ecb..c98e38e4529f8c8ed964a5dc9f5f1b68d6a3856c
+--- a/src/utils/validate_config.py
++++ b/src/utils/validate_config.py
+@@ -51,3 +51,7 @@
+     if process_name == "audit_dataset":
+         _require_keys(cfg, ["audit", "output"], f"{process_name} config")
+         return
++
++    if process_name == "collect_data":
++        _require_keys(cfg, ["data_collection", "data_source", "output"], f"{process_name} config")
++        return
+
+
+thinking
+**Analyzing and fixing import cycles in registry module**
+
+I'm untangling import cycles caused by registry importing sources and sources importing back registry during initialization. The key fix is to avoid importing the whole `sources` package in registry and instead explicitly import the `dummy` submodule at runtime using `importlib.import_module`, so dummy registers safely without triggering circular imports before all symbols are defined. This should keep initialization order safe and prevent ImportError.
+file update
+M /Users/kawahito/Desktop/LJ_prediction/src/data_collection/registry.py
+@@ -28,3 +28,5 @@
+     if not _DATA_SOURCE_FACTORIES:
+-        from src.data_collection import sources  # noqa: F401
++        import importlib
++
++        importlib.import_module("src.data_collection.sources.dummy")
+ 
+apply_patch(auto_approved=true) exited 0 in 56ms:
+Success. Updated the following files:
+M src/data_collection/registry.py
+file update:
+diff --git a/src/data_collection/formatters/mapping.py b/src/data_collection/formatters/mapping.py
+index f9f7e1ee992efe2cde49c5254c768685156d1e92..28a1ed18a61c284bd7fcbc90188ce625d001de50
+--- a/src/data_collection/formatters/mapping.py
++++ b/src/data_collection/formatters/mapping.py
+@@ -16,8 +16,16 @@
+         self.sample_id_column = str(cfg.get("sample_id_column", "sample_id"))
+         self.missing_value = cfg.get("missing_value", None)
+ 
+-    def _build_rows(self, records: List[Dict[str, Any]], logger) -> pd.DataFrame:
+-        if not self.column_map:
++    def _build_rows(
++        self,
++        records: List[Dict[str, Any]],
++        column_map: Dict[str, str],
++        passthrough_fields: List[str],
++        sample_id_column: str,
++        missing_value: Any,
++        logger,
++    ) -> pd.DataFrame:
++        if not column_map:
+             logger.warning("MappingFormatter column_map is empty; using raw keys as output columns.")
+             df = pd.DataFrame(records)
+         else:
+@@ -25,13 +33,13 @@
+             rows = []
+             for record in records:
+                 row = {}
+-                for out_col, raw_key in self.column_map.items():
++                for out_col, raw_key in column_map.items():
+                     if raw_key in record:
+                         row[out_col] = record.get(raw_key)
+                     else:
+-                        row[out_col] = self.missing_value
++                        row[out_col] = missing_value
+                         missing[raw_key] += 1
+-                for field in self.passthrough_fields:
++                for field in passthrough_fields:
+                     if field in record:
+                         row[field] = record.get(field)
+                 rows.append(row)
+@@ -40,15 +48,27 @@
+                 missing_keys = ", ".join(sorted(missing.keys()))
+                 logger.warning("Missing raw fields for mapping: %s", missing_keys)
+ 
+-        if self.sample_id_column not in df.columns:
+-            df[self.sample_id_column] = [f"sample_{i:06d}" for i in range(len(df))]
++        if sample_id_column not in df.columns:
++            df[sample_id_column] = [f"sample_{i:06d}" for i in range(len(df))]
+         else:
+-            missing_mask = df[self.sample_id_column].isna() | (df[self.sample_id_column].astype(str).str.strip() == "")
++            missing_mask = df[sample_id_column].isna() | (df[sample_id_column].astype(str).str.strip() == "")
+             if missing_mask.any():
+                 fill_ids = [f"sample_{i:06d}" for i in range(len(df))]
+-                df.loc[missing_mask, self.sample_id_column] = [fill_ids[i] for i in df.index[missing_mask]]
++                df.loc[missing_mask, sample_id_column] = [fill_ids[i] for i in df.index[missing_mask]]
+         return df
+ 
+     def format(self, payload: RawPayload, cfg: Dict[str, Any], logger) -> DataCollectionResult:
+-        df = self._build_rows(payload.records, logger)
++        column_map = dict(cfg.get("column_map", self.column_map) or {})
++        passthrough_fields = list(cfg.get("passthrough_fields", self.passthrough_fields) or [])
++        sample_id_column = str(cfg.get("sample_id_column", self.sample_id_column))
++        missing_value = cfg.get("missing_value", self.missing_value)
++
++        df = self._build_rows(
++            payload.records,
++            column_map,
++            passthrough_fields,
++            sample_id_column,
++            missing_value,
++            logger,
++        )
+         return DataCollectionResult(table=df, sdf_records=payload.sdf_records, metadata=payload.metadata)
+diff --git a/src/data_collection/registry.py b/src/data_collection/registry.py
+index a794c3ee1fe416082df76b519fa2ecf1edab0ff3..34c062ac5da4c9ef6d48ecfa657480d6cdebad25
+--- a/src/data_collection/registry.py
++++ b/src/data_collection/registry.py
+@@ -26,7 +26,9 @@
+     cache: Optional[FileCache],
+ ) -> DataSource:
+     if not _DATA_SOURCE_FACTORIES:
+-        from src.data_collection import sources  # noqa: F401
++        import importlib
++
++        importlib.import_module("src.data_collection.sources.dummy")
+ 
+     if name not in _DATA_SOURCE_FACTORIES:
+         available = ", ".join(sorted(_DATA_SOURCE_FACTORIES.keys()))
+diff --git a/src/data_collection/sources/__init__.py b/src/data_collection/sources/__init__.py
+index 8363402bd20026cd370b61d37678a58e0754c6df..bdec2fc8c46f03040519d76757f9e7c26dec2a31
+--- a/src/data_collection/sources/__init__.py
++++ b/src/data_collection/sources/__init__.py
+@@ -1,5 +1,3 @@
+ from __future__ import annotations
+ 
+-from src.data_collection.sources.dummy import build_dummy_source
+-
+-__all__ = ["build_dummy_source"]
++__all__: list[str] = []
+diff --git a/src/utils/validate_config.py b/src/utils/validate_config.py
+index 053ec999f8adf4053873f3530760c8b282109ecb..c98e38e4529f8c8ed964a5dc9f5f1b68d6a3856c
+--- a/src/utils/validate_config.py
++++ b/src/utils/validate_config.py
+@@ -51,3 +51,7 @@
+     if process_name == "audit_dataset":
+         _require_keys(cfg, ["audit", "output"], f"{process_name} config")
+         return
++
++    if process_name == "collect_data":
++        _require_keys(cfg, ["data_collection", "data_source", "output"], f"{process_name} config")
++        return
+
+file update:
+diff --git a/src/data_collection/formatters/mapping.py b/src/data_collection/formatters/mapping.py
+index f9f7e1ee992efe2cde49c5254c768685156d1e92..28a1ed18a61c284bd7fcbc90188ce625d001de50
+--- a/src/data_collection/formatters/mapping.py
++++ b/src/data_collection/formatters/mapping.py
+@@ -16,8 +16,16 @@
+         self.sample_id_column = str(cfg.get("sample_id_column", "sample_id"))
+         self.missing_value = cfg.get("missing_value", None)
+ 
+-    def _build_rows(self, records: List[Dict[str, Any]], logger) -> pd.DataFrame:
+-        if not self.column_map:
++    def _build_rows(
++        self,
++        records: List[Dict[str, Any]],
++        column_map: Dict[str, str],
++        passthrough_fields: List[str],
++        sample_id_column: str,
++        missing_value: Any,
++        logger,
++    ) -> pd.DataFrame:
++        if not column_map:
+             logger.warning("MappingFormatter column_map is empty; using raw keys as output columns.")
+             df = pd.DataFrame(records)
+         else:
+@@ -25,13 +33,13 @@
+             rows = []
+             for record in records:
+                 row = {}
+-                for out_col, raw_key in self.column_map.items():
++                for out_col, raw_key in column_map.items():
+                     if raw_key in record:
+                         row[out_col] = record.get(raw_key)
+                     else:
+-                        row[out_col] = self.missing_value
++                        row[out_col] = missing_value
+                         missing[raw_key] += 1
+-                for field in self.passthrough_fields:
++                for field in passthrough_fields:
+                     if field in record:
+                         row[field] = record.get(field)
+                 rows.append(row)
+@@ -40,15 +48,27 @@
+                 missing_keys = ", ".join(sorted(missing.keys()))
+                 logger.warning("Missing raw fields for mapping: %s", missing_keys)
+ 
+-        if self.sample_id_column not in df.columns:
+-            df[self.sample_id_column] = [f"sample_{i:06d}" for i in range(len(df))]
++        if sample_id_column not in df.columns:
++            df[sample_id_column] = [f"sample_{i:06d}" for i in range(len(df))]
+         else:
+-            missing_mask = df[self.sample_id_column].isna() | (df[self.sample_id_column].astype(str).str.strip() == "")
++            missing_mask = df[sample_id_column].isna() | (df[sample_id_column].astype(str).str.strip() == "")
+             if missing_mask.any():
+                 fill_ids = [f"sample_{i:06d}" for i in range(len(df))]
+-                df.loc[missing_mask, self.sample_id_column] = [fill_ids[i] for i in df.index[missing_mask]]
++                df.loc[missing_mask, sample_id_column] = [fill_ids[i] for i in df.index[missing_mask]]
+         return df
+ 
+     def format(self, payload: RawPayload, cfg: Dict[str, Any], logger) -> DataCollectionResult:
+-        df = self._build_rows(payload.records, logger)
++        column_map = dict(cfg.get("column_map", self.column_map) or {})
++        passthrough_fields = list(cfg.get("passthrough_fields", self.passthrough_fields) or [])
++        sample_id_column = str(cfg.get("sample_id_column", self.sample_id_column))
++        missing_value = cfg.get("missing_value", self.missing_value)
++
++        df = self._build_rows(
++            payload.records,
++            column_map,
++            passthrough_fields,
++            sample_id_column,
++            missing_value,
++            logger,
++        )
+         return DataCollectionResult(table=df, sdf_records=payload.sdf_records, metadata=payload.metadata)
+diff --git a/src/data_collection/registry.py b/src/data_collection/registry.py
+index a794c3ee1fe416082df76b519fa2ecf1edab0ff3..34c062ac5da4c9ef6d48ecfa657480d6cdebad25
+--- a/src/data_collection/registry.py
++++ b/src/data_collection/registry.py
+@@ -26,7 +26,9 @@
+     cache: Optional[FileCache],
+ ) -> DataSource:
+     if not _DATA_SOURCE_FACTORIES:
+-        from src.data_collection import sources  # noqa: F401
++        import importlib
++
++        importlib.import_module("src.data_collection.sources.dummy")
+ 
+     if name not in _DATA_SOURCE_FACTORIES:
+         available = ", ".join(sorted(_DATA_SOURCE_FACTORIES.keys()))
+diff --git a/src/data_collection/sources/__init__.py b/src/data_collection/sources/__init__.py
+index 8363402bd20026cd370b61d37678a58e0754c6df..bdec2fc8c46f03040519d76757f9e7c26dec2a31
+--- a/src/data_collection/sources/__init__.py
++++ b/src/data_collection/sources/__init__.py
+@@ -1,5 +1,3 @@
+ from __future__ import annotations
+ 
+-from src.data_collection.sources.dummy import build_dummy_source
+-
+-__all__ = ["build_dummy_source"]
++__all__: list[str] = []
+diff --git a/src/utils/validate_config.py b/src/utils/validate_config.py
+index 053ec999f8adf4053873f3530760c8b282109ecb..c98e38e4529f8c8ed964a5dc9f5f1b68d6a3856c
+--- a/src/utils/validate_config.py
++++ b/src/utils/validate_config.py
+@@ -51,3 +51,7 @@
+     if process_name == "audit_dataset":
+         _require_keys(cfg, ["audit", "output"], f"{process_name} config")
+         return
++
++    if process_name == "collect_data":
++        _require_keys(cfg, ["data_collection", "data_source", "output"], f"{process_name} config")
++        return
+
+
+thinking
+**Running tests again**
+exec
+/bin/zsh -lc 'pytest -k data_collection' in /Users/kawahito/Desktop/LJ_prediction succeeded in 2.46s:
+============================= test session starts ==============================
+platform darwin -- Python 3.10.8, pytest-9.0.1, pluggy-1.6.0
+rootdir: /Users/kawahito/Desktop/LJ_prediction
+collected 13 items / 12 deselected / 1 selected
+
+tests/test_data_collection.py .                                          [100%]
+
+======================= 1 passed, 12 deselected in 1.86s =======================
+file update:
+diff --git a/src/data_collection/formatters/mapping.py b/src/data_collection/formatters/mapping.py
+index f9f7e1ee992efe2cde49c5254c768685156d1e92..28a1ed18a61c284bd7fcbc90188ce625d001de50
+--- a/src/data_collection/formatters/mapping.py
++++ b/src/data_collection/formatters/mapping.py
+@@ -16,8 +16,16 @@
+         self.sample_id_column = str(cfg.get("sample_id_column", "sample_id"))
+         self.missing_value = cfg.get("missing_value", None)
+ 
+-    def _build_rows(self, records: List[Dict[str, Any]], logger) -> pd.DataFrame:
+-        if not self.column_map:
++    def _build_rows(
++        self,
++        records: List[Dict[str, Any]],
++        column_map: Dict[str, str],
++        passthrough_fields: List[str],
++        sample_id_column: str,
++        missing_value: Any,
++        logger,
++    ) -> pd.DataFrame:
++        if not column_map:
+             logger.warning("MappingFormatter column_map is empty; using raw keys as output columns.")
+             df = pd.DataFrame(records)
+         else:
+@@ -25,13 +33,13 @@
+             rows = []
+             for record in records:
+                 row = {}
+-                for out_col, raw_key in self.column_map.items():
++                for out_col, raw_key in column_map.items():
+                     if raw_key in record:
+                         row[out_col] = record.get(raw_key)
+                     else:
+-                        row[out_col] = self.missing_value
++                        row[out_col] = missing_value
+                         missing[raw_key] += 1
+-                for field in self.passthrough_fields:
++                for field in passthrough_fields:
+                     if field in record:
+                         row[field] = record.get(field)
+                 rows.append(row)
+@@ -40,15 +48,27 @@
+                 missing_keys = ", ".join(sorted(missing.keys()))
+                 logger.warning("Missing raw fields for mapping: %s", missing_keys)
+ 
+-        if self.sample_id_column not in df.columns:
+-            df[self.sample_id_column] = [f"sample_{i:06d}" for i in range(len(df))]
++        if sample_id_column not in df.columns:
++            df[sample_id_column] = [f"sample_{i:06d}" for i in range(len(df))]
+         else:
+-            missing_mask = df[self.sample_id_column].isna() | (df[self.sample_id_column].astype(str).str.strip() == "")
++            missing_mask = df[sample_id_column].isna() | (df[sample_id_column].astype(str).str.strip() == "")
+             if missing_mask.any():
+                 fill_ids = [f"sample_{i:06d}" for i in range(len(df))]
+-                df.loc[missing_mask, self.sample_id_column] = [fill_ids[i] for i in df.index[missing_mask]]
++                df.loc[missing_mask, sample_id_column] = [fill_ids[i] for i in df.index[missing_mask]]
+         return df
+ 
+     def format(self, payload: RawPayload, cfg: Dict[str, Any], logger) -> DataCollectionResult:
+-        df = self._build_rows(payload.records, logger)
++        column_map = dict(cfg.get("column_map", self.column_map) or {})
++        passthrough_fields = list(cfg.get("passthrough_fields", self.passthrough_fields) or [])
++        sample_id_column = str(cfg.get("sample_id_column", self.sample_id_column))
++        missing_value = cfg.get("missing_value", self.missing_value)
++
++        df = self._build_rows(
++            payload.records,
++            column_map,
++            passthrough_fields,
++            sample_id_column,
++            missing_value,
++            logger,
++        )
+         return DataCollectionResult(table=df, sdf_records=payload.sdf_records, metadata=payload.metadata)
+diff --git a/src/data_collection/registry.py b/src/data_collection/registry.py
+index a794c3ee1fe416082df76b519fa2ecf1edab0ff3..34c062ac5da4c9ef6d48ecfa657480d6cdebad25
+--- a/src/data_collection/registry.py
++++ b/src/data_collection/registry.py
+@@ -26,7 +26,9 @@
+     cache: Optional[FileCache],
+ ) -> DataSource:
+     if not _DATA_SOURCE_FACTORIES:
+-        from src.data_collection import sources  # noqa: F401
++        import importlib
++
++        importlib.import_module("src.data_collection.sources.dummy")
+ 
+     if name not in _DATA_SOURCE_FACTORIES:
+         available = ", ".join(sorted(_DATA_SOURCE_FACTORIES.keys()))
+diff --git a/src/data_collection/sources/__init__.py b/src/data_collection/sources/__init__.py
+index 8363402bd20026cd370b61d37678a58e0754c6df..bdec2fc8c46f03040519d76757f9e7c26dec2a31
+--- a/src/data_collection/sources/__init__.py
++++ b/src/data_collection/sources/__init__.py
+@@ -1,5 +1,3 @@
+ from __future__ import annotations
+ 
+-from src.data_collection.sources.dummy import build_dummy_source
+-
+-__all__ = ["build_dummy_source"]
++__all__: list[str] = []
+diff --git a/src/utils/validate_config.py b/src/utils/validate_config.py
+index 053ec999f8adf4053873f3530760c8b282109ecb..c98e38e4529f8c8ed964a5dc9f5f1b68d6a3856c
+--- a/src/utils/validate_config.py
++++ b/src/utils/validate_config.py
+@@ -51,3 +51,7 @@
+     if process_name == "audit_dataset":
+         _require_keys(cfg, ["audit", "output"], f"{process_name} config")
+         return
++
++    if process_name == "collect_data":
++        _require_keys(cfg, ["data_collection", "data_source", "output"], f"{process_name} config")
++        return
+
+
+thinking
+**Updating plan status**
+Plan update
+  ✓ Review existing process/config patterns and data contracts for collect_data alignment
+  ✓ Implement data_collection module (client/formatter/cache/registry), collect_data script, and configs
+  ✓ Add unit tests + update queue status after validation
+file update:
+diff --git a/src/data_collection/formatters/mapping.py b/src/data_collection/formatters/mapping.py
+index f9f7e1ee992efe2cde49c5254c768685156d1e92..28a1ed18a61c284bd7fcbc90188ce625d001de50
+--- a/src/data_collection/formatters/mapping.py
++++ b/src/data_collection/formatters/mapping.py
+@@ -16,8 +16,16 @@
+         self.sample_id_column = str(cfg.get("sample_id_column", "sample_id"))
+         self.missing_value = cfg.get("missing_value", None)
+ 
+-    def _build_rows(self, records: List[Dict[str, Any]], logger) -> pd.DataFrame:
+-        if not self.column_map:
++    def _build_rows(
++        self,
++        records: List[Dict[str, Any]],
++        column_map: Dict[str, str],
++        passthrough_fields: List[str],
++        sample_id_column: str,
++        missing_value: Any,
++        logger,
++    ) -> pd.DataFrame:
++        if not column_map:
+             logger.warning("MappingFormatter column_map is empty; using raw keys as output columns.")
+             df = pd.DataFrame(records)
+         else:
+@@ -25,13 +33,13 @@
+             rows = []
+             for record in records:
+                 row = {}
+-                for out_col, raw_key in self.column_map.items():
++                for out_col, raw_key in column_map.items():
+                     if raw_key in record:
+                         row[out_col] = record.get(raw_key)
+                     else:
+-                        row[out_col] = self.missing_value
++                        row[out_col] = missing_value
+                         missing[raw_key] += 1
+-                for field in self.passthrough_fields:
++                for field in passthrough_fields:
+                     if field in record:
+                         row[field] = record.get(field)
+                 rows.append(row)
+@@ -40,15 +48,27 @@
+                 missing_keys = ", ".join(sorted(missing.keys()))
+                 logger.warning("Missing raw fields for mapping: %s", missing_keys)
+ 
+-        if self.sample_id_column not in df.columns:
+-            df[self.sample_id_column] = [f"sample_{i:06d}" for i in range(len(df))]
++        if sample_id_column not in df.columns:
++            df[sample_id_column] = [f"sample_{i:06d}" for i in range(len(df))]
+         else:
+-            missing_mask = df[self.sample_id_column].isna() | (df[self.sample_id_column].astype(str).str.strip() == "")
++            missing_mask = df[sample_id_column].isna() | (df[sample_id_column].astype(str).str.strip() == "")
+             if missing_mask.any():
+                 fill_ids = [f"sample_{i:06d}" for i in range(len(df))]
+-                df.loc[missing_mask, self.sample_id_column] = [fill_ids[i] for i in df.index[missing_mask]]
++                df.loc[missing_mask, sample_id_column] = [fill_ids[i] for i in df.index[missing_mask]]
+         return df
+ 
+     def format(self, payload: RawPayload, cfg: Dict[str, Any], logger) -> DataCollectionResult:
+-        df = self._build_rows(payload.records, logger)
++        column_map = dict(cfg.get("column_map", self.column_map) or {})
++        passthrough_fields = list(cfg.get("passthrough_fields", self.passthrough_fields) or [])
++        sample_id_column = str(cfg.get("sample_id_column", self.sample_id_column))
++        missing_value = cfg.get("missing_value", self.missing_value)
++
++        df = self._build_rows(
++            payload.records,
++            column_map,
++            passthrough_fields,
++            sample_id_column,
++            missing_value,
++            logger,
++        )
+         return DataCollectionResult(table=df, sdf_records=payload.sdf_records, metadata=payload.metadata)
+diff --git a/src/data_collection/registry.py b/src/data_collection/registry.py
+index a794c3ee1fe416082df76b519fa2ecf1edab0ff3..34c062ac5da4c9ef6d48ecfa657480d6cdebad25
+--- a/src/data_collection/registry.py
++++ b/src/data_collection/registry.py
+@@ -26,7 +26,9 @@
+     cache: Optional[FileCache],
+ ) -> DataSource:
+     if not _DATA_SOURCE_FACTORIES:
+-        from src.data_collection import sources  # noqa: F401
++        import importlib
++
++        importlib.import_module("src.data_collection.sources.dummy")
+ 
+     if name not in _DATA_SOURCE_FACTORIES:
+         available = ", ".join(sorted(_DATA_SOURCE_FACTORIES.keys()))
+diff --git a/src/data_collection/sources/__init__.py b/src/data_collection/sources/__init__.py
+index 8363402bd20026cd370b61d37678a58e0754c6df..bdec2fc8c46f03040519d76757f9e7c26dec2a31
+--- a/src/data_collection/sources/__init__.py
++++ b/src/data_collection/sources/__init__.py
+@@ -1,5 +1,3 @@
+ from __future__ import annotations
+ 
+-from src.data_collection.sources.dummy import build_dummy_source
+-
+-__all__ = ["build_dummy_source"]
++__all__: list[str] = []
+diff --git a/src/utils/validate_config.py b/src/utils/validate_config.py
+index 053ec999f8adf4053873f3530760c8b282109ecb..c98e38e4529f8c8ed964a5dc9f5f1b68d6a3856c
+--- a/src/utils/validate_config.py
++++ b/src/utils/validate_config.py
+@@ -51,3 +51,7 @@
+     if process_name == "audit_dataset":
+         _require_keys(cfg, ["audit", "output"], f"{process_name} config")
+         return
++
++    if process_name == "collect_data":
++        _require_keys(cfg, ["data_collection", "data_source", "output"], f"{process_name} config")
++        return
+
+
+thinking
+**Choosing method to update JSON status**
+exec
+/bin/zsh -lc "python - <<'PY'
+import json
+from datetime import datetime, timezone
+from pathlib import Path
+
+path = Path('work/queue.json')
+with path.open('r', encoding='utf-8') as f:
+    data = json.load(f)
+
+updated = False
+for task in data.get('tasks', []):
+    if task.get('id') == '050':
+        task['status'] = 'done'
+        updated = True
+
+if updated:
+    data['updated_at'] = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
+
+with path.open('w', encoding='utf-8') as f:
+    json.dump(data, f, ensure_ascii=False, indent=2)
+    f.write('\\n')
+PY" in /Users/kawahito/Desktop/LJ_prediction succeeded in 326ms:
+
+file update:
+diff --git a/src/data_collection/formatters/mapping.py b/src/data_collection/formatters/mapping.py
+index f9f7e1ee992efe2cde49c5254c768685156d1e92..28a1ed18a61c284bd7fcbc90188ce625d001de50
+--- a/src/data_collection/formatters/mapping.py
++++ b/src/data_collection/formatters/mapping.py
+@@ -16,8 +16,16 @@
+         self.sample_id_column = str(cfg.get("sample_id_column", "sample_id"))
+         self.missing_value = cfg.get("missing_value", None)
+ 
+-    def _build_rows(self, records: List[Dict[str, Any]], logger) -> pd.DataFrame:
+-        if not self.column_map:
++    def _build_rows(
++        self,
++        records: List[Dict[str, Any]],
++        column_map: Dict[str, str],
++        passthrough_fields: List[str],
++        sample_id_column: str,
++        missing_value: Any,
++        logger,
++    ) -> pd.DataFrame:
++        if not column_map:
+             logger.warning("MappingFormatter column_map is empty; using raw keys as output columns.")
+             df = pd.DataFrame(records)
+         else:
+@@ -25,13 +33,13 @@
+             rows = []
+             for record in records:
+                 row = {}
+-                for out_col, raw_key in self.column_map.items():
++                for out_col, raw_key in column_map.items():
+                     if raw_key in record:
+                         row[out_col] = record.get(raw_key)
+                     else:
+-                        row[out_col] = self.missing_value
++                        row[out_col] = missing_value
+                         missing[raw_key] += 1
+-                for field in self.passthrough_fields:
++                for field in passthrough_fields:
+                     if field in record:
+                         row[field] = record.get(field)
+                 rows.append(row)
+@@ -40,15 +48,27 @@
+                 missing_keys = ", ".join(sorted(missing.keys()))
+                 logger.warning("Missing raw fields for mapping: %s", missing_keys)
+ 
+-        if self.sample_id_column not in df.columns:
+-            df[self.sample_id_column] = [f"sample_{i:06d}" for i in range(len(df))]
++        if sample_id_column not in df.columns:
++            df[sample_id_column] = [f"sample_{i:06d}" for i in range(len(df))]
+         else:
+-            missing_mask = df[self.sample_id_column].isna() | (df[self.sample_id_column].astype(str).str.strip() == "")
++            missing_mask = df[sample_id_column].isna() | (df[sample_id_column].astype(str).str.strip() == "")
+             if missing_mask.any():
+                 fill_ids = [f"sample_{i:06d}" for i in range(len(df))]
+-                df.loc[missing_mask, self.sample_id_column] = [fill_ids[i] for i in df.index[missing_mask]]
++                df.loc[missing_mask, sample_id_column] = [fill_ids[i] for i in df.index[missing_mask]]
+         return df
+ 
+     def format(self, payload: RawPayload, cfg: Dict[str, Any], logger) -> DataCollectionResult:
+-        df = self._build_rows(payload.records, logger)
++        column_map = dict(cfg.get("column_map", self.column_map) or {})
++        passthrough_fields = list(cfg.get("passthrough_fields", self.passthrough_fields) or [])
++        sample_id_column = str(cfg.get("sample_id_column", self.sample_id_column))
++        missing_value = cfg.get("missing_value", self.missing_value)
++
++        df = self._build_rows(
++            payload.records,
++            column_map,
++            passthrough_fields,
++            sample_id_column,
++            missing_value,
++            logger,
++        )
+         return DataCollectionResult(table=df, sdf_records=payload.sdf_records, metadata=payload.metadata)
+diff --git a/src/data_collection/registry.py b/src/data_collection/registry.py
+index a794c3ee1fe416082df76b519fa2ecf1edab0ff3..34c062ac5da4c9ef6d48ecfa657480d6cdebad25
+--- a/src/data_collection/registry.py
++++ b/src/data_collection/registry.py
+@@ -26,7 +26,9 @@
+     cache: Optional[FileCache],
+ ) -> DataSource:
+     if not _DATA_SOURCE_FACTORIES:
+-        from src.data_collection import sources  # noqa: F401
++        import importlib
++
++        importlib.import_module("src.data_collection.sources.dummy")
+ 
+     if name not in _DATA_SOURCE_FACTORIES:
+         available = ", ".join(sorted(_DATA_SOURCE_FACTORIES.keys()))
+diff --git a/src/data_collection/sources/__init__.py b/src/data_collection/sources/__init__.py
+index 8363402bd20026cd370b61d37678a58e0754c6df..bdec2fc8c46f03040519d76757f9e7c26dec2a31
+--- a/src/data_collection/sources/__init__.py
++++ b/src/data_collection/sources/__init__.py
+@@ -1,5 +1,3 @@
+ from __future__ import annotations
+ 
+-from src.data_collection.sources.dummy import build_dummy_source
+-
+-__all__ = ["build_dummy_source"]
++__all__: list[str] = []
+diff --git a/src/utils/validate_config.py b/src/utils/validate_config.py
+index 053ec999f8adf4053873f3530760c8b282109ecb..c98e38e4529f8c8ed964a5dc9f5f1b68d6a3856c
+--- a/src/utils/validate_config.py
++++ b/src/utils/validate_config.py
+@@ -51,3 +51,7 @@
+     if process_name == "audit_dataset":
+         _require_keys(cfg, ["audit", "output"], f"{process_name} config")
+         return
++
++    if process_name == "collect_data":
++        _require_keys(cfg, ["data_collection", "data_source", "output"], f"{process_name} config")
++        return
+
+
+thinking
+**Reviewing final task status**
+exec
+/bin/zsh -lc 'git status -sb' in /Users/kawahito/Desktop/LJ_prediction succeeded in 313ms:
+## test_chemkit
+ M README.md
+ M configs/dataset.yaml
+ M configs/dataset_quick.yaml
+ M configs/fp/predict.yaml
+ M configs/fp/predict_quick.yaml
+ M configs/fp/train.yaml
+ M configs/fp/train_quick.yaml
+ M configs/gnn/predict.yaml
+ M configs/gnn/train.yaml
+ M configs/gnn/train_mpnn_quick.yaml
+ M configs/gnn/train_quick.yaml
+ M objective.md
+ M scripts/build_dataset.py
+ D scripts/fp_predict.py
+ D scripts/fp_train.py
+ D scripts/gnn_predict.py
+ D scripts/gnn_train.py
+ M src/common/config.py
+ M src/common/splitters.py
+file update:
+diff --git a/src/data_collection/formatters/mapping.py b/src/data_collection/formatters/mapping.py
+index f9f7e1ee992efe2cde49c5254c768685156d1e92..28a1ed18a61c284bd7fcbc90188ce625d001de50
+--- a/src/data_collection/formatters/mapping.py
++++ b/src/data_collection/formatters/mapping.py
+@@ -16,8 +16,16 @@
+         self.sample_id_column = str(cfg.get("sample_id_column", "sample_id"))
+         self.missing_value = cfg.get("missing_value", None)
+ 
+-    def _build_rows(self, records: List[Dict[str, Any]], logger) -> pd.DataFrame:
+-        if not self.column_map:
++    def _build_rows(
++        self,
++        records: List[Dict[str, Any]],
++        column_map: Dict[str, str],
++        passthrough_fields: List[str],
++        sample_id_column: str,
++        missing_value: Any,
++        logger,
++    ) -> pd.DataFrame:
++        if not column_map:
+             logger.warning("MappingFormatter column_map is empty; using raw keys as output columns.")
+             df = pd.DataFrame(records)
+         else:
+@@ -25,13 +33,13 @@
+             rows = []
+             for record in records:
+                 row = {}
+-                for out_col, raw_key in self.column_map.items():
++                for out_col, raw_key in column_map.items():
+                     if raw_key in record:
+                         row[out_col] = record.get(raw_key)
+                     else:
+-                        row[out_col] = self.missing_value
++                        row[out_col] = missing_value
+                         missing[raw_key] += 1
+-                for field in self.passthrough_fields:
++                for field in passthrough_fields:
+                     if field in record:
+                         row[field] = record.get(field)
+                 rows.append(row)
+@@ -40,15 +48,27 @@
+                 missing_keys = ", ".join(sorted(missing.keys()))
+                 logger.warning("Missing raw fields for mapping: %s", missing_keys)
+ 
+-        if self.sample_id_column not in df.columns:
+-            df[self.sample_id_column] = [f"sample_{i:06d}" for i in range(len(df))]
++        if sample_id_column not in df.columns:
++            df[sample_id_column] = [f"sample_{i:06d}" for i in range(len(df))]
+         else:
+-            missing_mask = df[self.sample_id_column].isna() | (df[self.sample_id_column].astype(str).str.strip() == "")
++            missing_mask = df[sample_id_column].isna() | (df[sample_id_column].astype(str).str.strip() == "")
+             if missing_mask.any():
+                 fill_ids = [f"sample_{i:06d}" for i in range(len(df))]
+-                df.loc[missing_mask, self.sample_id_column] = [fill_ids[i] for i in df.index[missing_mask]]
++                df.loc[missing_mask, sample_id_column] = [fill_ids[i] for i in df.index[missing_mask]]
+         return df
+ 
+     def format(self, payload: RawPayload, cfg: Dict[str, Any], logger) -> DataCollectionResult:
+-        df = self._build_rows(payload.records, logger)
++        column_map = dict(cfg.get("column_map", self.column_map) or {})
++        passthrough_fields = list(cfg.get("passthrough_fields", self.passthrough_fields) or [])
++        sample_id_column = str(cfg.get("sample_id_column", self.sample_id_column))
++        missing_value = cfg.get("missing_value", self.missing_value)
++
++        df = self._build_rows(
++            payload.records,
++            column_map,
++            passthrough_fields,
++            sample_id_column,
++            missing_value,
++            logger,
++        )
+         return DataCollectionResult(table=df, sdf_records=payload.sdf_records, metadata=payload.metadata)
+diff --git a/src/data_collection/registry.py b/src/data_collection/registry.py
+index a794c3ee1fe416082df76b519fa2ecf1edab0ff3..34c062ac5da4c9ef6d48ecfa657480d6cdebad25
+--- a/src/data_collection/registry.py
++++ b/src/data_collection/registry.py
+@@ -26,7 +26,9 @@
+     cache: Optional[FileCache],
+ ) -> DataSource:
+     if not _DATA_SOURCE_FACTORIES:
+-        from src.data_collection import sources  # noqa: F401
++        import importlib
++
++        importlib.import_module("src.data_collection.sources.dummy")
+ 
+     if name not in _DATA_SOURCE_FACTORIES:
+         available = ", ".join(sorted(_DATA_SOURCE_FACTORIES.keys()))
+diff --git a/src/data_collection/sources/__init__.py b/src/data_collection/sources/__init__.py
+index 8363402bd20026cd370b61d37678a58e0754c6df..bdec2fc8c46f03040519d76757f9e7c26dec2a31
+--- a/src/data_collection/sources/__init__.py
++++ b/src/data_collection/sources/__init__.py
+@@ -1,5 +1,3 @@
+ from __future__ import annotations
+ 
+-from src.data_collection.sources.dummy import build_dummy_source
+-
+-__all__ = ["build_dummy_source"]
++__all__: list[str] = []
+diff --git a/src/utils/validate_config.py b/src/utils/validate_config.py
+index 053ec999f8adf4053873f3530760c8b282109ecb..c98e38e4529f8c8ed964a5dc9f5f1b68d6a3856c
+--- a/src/utils/validate_config.py
++++ b/src/utils/validate_config.py
+@@ -51,3 +51,7 @@
+     if process_name == "audit_dataset":
+         _require_keys(cfg, ["audit", "output"], f"{process_name} config")
+         return
++
++    if process_name == "collect_data":
++        _require_keys(cfg, ["data_collection", "data_source", "output"], f"{process_name} config")
++        return
+
+
+thinking
+**Summarizing change and final response content**
+
+I'll organize a clear final message starting with the skill used, then explain the new collect_data process and modules added. I'll list file-level plans, implementation highlights including key new files and behaviors, tests run with pytest, validation commands, compatibility impacts, and helpful next steps. This will meet all output requirements without flooding full diffs but highlighting essential changes and context.
+codex
+Using S20_dataset_loader to keep collection output column mapping and missing-field logging aligned with the dataset contracts.
+
+Implemented the collect_data process with a plugin registry, dummy data source, mapping formatter, and cache, plus configs and a unit test; secrets are env-only and raw outputs land in the run dir with optional export.
+
+**Change Plan**
+- `src/data_collection/*`: new package for client/formatter/cache/registry/runner layers.
+- `scripts/collect_data.py`: new CLI entrypoint for the collect_data process.
+- `configs/collect_data.yaml`, `configs/process/collect_data.yaml`, `configs/data_collection/default.yaml`, `configs/data_source/dummy.yaml`: config groups to switch `data_source` via config.
+- `src/utils/validate_config.py`: validate collect_data config shape.
+- `tests/test_data_collection.py`: unit test for dummy collection output.
+- `work/queue.json`: task 050 marked done.
+
+**Implementation Details**
+- `src/data_collection/runner.py`: orchestration, cache usage, raw CSV/SDF output, optional export, meta.json with data hash.
+- `src/data_collection/formatters/mapping.py`: column_map formatting with missing-field logging and sample_id generation.
+- `src/data_collection/utils.py`: env-only API key enforcement (no secrets in code).
+- `src/data_collection/registry.py`: lazy-load dummy source to avoid circular imports.
+
+**Tests**
+- `pytest -k data_collection` (pass)
+
+**Validation Command**
+- `pytest -k data_collection`
+
+**Compatibility Impact**
+- Config: new `collect_data` config groups; existing configs unchanged.
+- CLI: new `scripts/collect_data.py`.
+- Artifacts: new `runs/collect_data/<exp>/` with `config.yaml`, `meta.json`, and `raw/` outputs; export to `data/raw` only when enabled.
+
+Next steps (optional):
+1) Run `python scripts/collect_data.py --config configs/collect_data.yaml` to generate stub outputs.
+2) Add a real data source (e.g., PubChem) by implementing a new client/formatter and a `configs/data_source/<name>.yaml`.
+file update:
+diff --git a/src/data_collection/formatters/mapping.py b/src/data_collection/formatters/mapping.py
+index f9f7e1ee992efe2cde49c5254c768685156d1e92..28a1ed18a61c284bd7fcbc90188ce625d001de50
+--- a/src/data_collection/formatters/mapping.py
++++ b/src/data_collection/formatters/mapping.py
+@@ -16,8 +16,16 @@
+         self.sample_id_column = str(cfg.get("sample_id_column", "sample_id"))
+         self.missing_value = cfg.get("missing_value", None)
+ 
+-    def _build_rows(self, records: List[Dict[str, Any]], logger) -> pd.DataFrame:
+-        if not self.column_map:
++    def _build_rows(
++        self,
++        records: List[Dict[str, Any]],
++        column_map: Dict[str, str],
++        passthrough_fields: List[str],
++        sample_id_column: str,
++        missing_value: Any,
++        logger,
++    ) -> pd.DataFrame:
++        if not column_map:
+             logger.warning("MappingFormatter column_map is empty; using raw keys as output columns.")
+             df = pd.DataFrame(records)
+         else:
+@@ -25,13 +33,13 @@
+             rows = []
+             for record in records:
+                 row = {}
+-                for out_col, raw_key in self.column_map.items():
++                for out_col, raw_key in column_map.items():
+                     if raw_key in record:
+                         row[out_col] = record.get(raw_key)
+                     else:
+-                        row[out_col] = self.missing_value
++                        row[out_col] = missing_value
+                         missing[raw_key] += 1
+-                for field in self.passthrough_fields:
++                for field in passthrough_fields:
+                     if field in record:
+                         row[field] = record.get(field)
+                 rows.append(row)
+@@ -40,15 +48,27 @@
+                 missing_keys = ", ".join(sorted(missing.keys()))
+                 logger.warning("Missing raw fields for mapping: %s", missing_keys)
+ 
+-        if self.sample_id_column not in df.columns:
+-            df[self.sample_id_column] = [f"sample_{i:06d}" for i in range(len(df))]
++        if sample_id_column not in df.columns:
++            df[sample_id_column] = [f"sample_{i:06d}" for i in range(len(df))]
+         else:
+-            missing_mask = df[self.sample_id_column].isna() | (df[self.sample_id_column].astype(str).str.strip() == "")
++            missing_mask = df[sample_id_column].isna() | (df[sample_id_column].astype(str).str.strip() == "")
+             if missing_mask.any():
+                 fill_ids = [f"sample_{i:06d}" for i in range(len(df))]
+-                df.loc[missing_mask, self.sample_id_column] = [fill_ids[i] for i in df.index[missing_mask]]
++                df.loc[missing_mask, sample_id_column] = [fill_ids[i] for i in df.index[missing_mask]]
+         return df
+ 
+     def format(self, payload: RawPayload, cfg: Dict[str, Any], logger) -> DataCollectionResult:
+-        df = self._build_rows(payload.records, logger)
++        column_map = dict(cfg.get("column_map", self.column_map) or {})
++        passthrough_fields = list(cfg.get("passthrough_fields", self.passthrough_fields) or [])
++        sample_id_column = str(cfg.get("sample_id_column", self.sample_id_column))
++        missing_value = cfg.get("missing_value", self.missing_value)
++
++        df = self._build_rows(
++            payload.records,
++            column_map,
++            passthrough_fields,
++            sample_id_column,
++            missing_value,
++            logger,
++        )
+         return DataCollectionResult(table=df, sdf_records=payload.sdf_records, metadata=payload.metadata)
+diff --git a/src/data_collection/registry.py b/src/data_collection/registry.py
+index a794c3ee1fe416082df76b519fa2ecf1edab0ff3..34c062ac5da4c9ef6d48ecfa657480d6cdebad25
+--- a/src/data_collection/registry.py
++++ b/src/data_collection/registry.py
+@@ -26,7 +26,9 @@
+     cache: Optional[FileCache],
+ ) -> DataSource:
+     if not _DATA_SOURCE_FACTORIES:
+-        from src.data_collection import sources  # noqa: F401
++        import importlib
++
++        importlib.import_module("src.data_collection.sources.dummy")
+ 
+     if name not in _DATA_SOURCE_FACTORIES:
+         available = ", ".join(sorted(_DATA_SOURCE_FACTORIES.keys()))
+diff --git a/src/data_collection/sources/__init__.py b/src/data_collection/sources/__init__.py
+index 8363402bd20026cd370b61d37678a58e0754c6df..bdec2fc8c46f03040519d76757f9e7c26dec2a31
+--- a/src/data_collection/sources/__init__.py
++++ b/src/data_collection/sources/__init__.py
+@@ -1,5 +1,3 @@
+ from __future__ import annotations
+ 
+-from src.data_collection.sources.dummy import build_dummy_source
+-
+-__all__ = ["build_dummy_source"]
++__all__: list[str] = []
+diff --git a/src/utils/validate_config.py b/src/utils/validate_config.py
+index 053ec999f8adf4053873f3530760c8b282109ecb..c98e38e4529f8c8ed964a5dc9f5f1b68d6a3856c
+--- a/src/utils/validate_config.py
++++ b/src/utils/validate_config.py
+@@ -51,3 +51,7 @@
+     if process_name == "audit_dataset":
+         _require_keys(cfg, ["audit", "output"], f"{process_name} config")
+         return
++
++    if process_name == "collect_data":
++        _require_keys(cfg, ["data_collection", "data_source", "output"], f"{process_name} config")
++        return
+
+tokens used
+165,244

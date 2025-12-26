@@ -1,0 +1,25 @@
+Using S90_artifacts_versioning and S95_tests_ci because this task is about artifact contract implementation and contract tests.
+
+**Change Plan**
+- Blocked per `work/tasks/020_artifact_contract_impl.md`; no file edits until 010/015 unblock is cleared in the task file.
+
+**Implementation**
+- No changes; task file explicitly marks this task as blocked.
+
+**Tests**
+- None added/updated.
+
+**Verification**
+- N/A (blocked). If unblocked later: `pytest tests/contract`
+
+**Compatibility Impact**
+- None (no changes).
+
+**Task Status**
+- Source of truth `work/tasks/020_artifact_contract_impl.md` says blocked (010/015 not completed), so I cannot proceed.
+- `work/queue.json` still shows task 020 as in_progress, but I can’t update it due to read-only sandbox.
+- There is a mismatch: `work/queue.json` shows 010/015 done, while the task file still blocks 020. Please confirm which to follow.
+
+If you want me to move forward, please choose:
+1) Update `work/tasks/020_artifact_contract_impl.md` to remove the block (or tell me to do it once write access is allowed).  
+2) Allow write access so I can set `work/queue.json` task 020 to `blocked` (or proceed with implementation if unblocked).

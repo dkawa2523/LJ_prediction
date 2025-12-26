@@ -1,0 +1,5 @@
+Marked task 050 as complete in its task doc and refreshed the queue timestamp so records align with the implemented data collection module. Details: updated acceptance criteria and results in `work/tasks/050_data_collection_module.md`, and bumped `work/queue.json` `updated_at` to reflect the latest progress.
+
+Tests: `pytest -k data_collection`
+
+Next step (optional): run `pytest` for broader coverage.

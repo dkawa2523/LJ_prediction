@@ -1,0 +1,28 @@
+S90_artifacts_versioning と S95_tests_ci を使う前提で確認しました。`work/tasks/020_artifact_contract_impl.md` に blocked 条件が明記されているため実装は保留しています。さらに現在は read-only 環境のためファイル更新ができません。
+
+**変更計画（ファイル単位）**
+- `src/utils/artifacts.py`: config/meta/metrics/predictions の保存共通化、`dataset_hash`/`config_hash`/`git_sha` の算出と `meta.json` 必須キーの生成。
+- `src/fp/train.py`: `metrics.json` と `model.ckpt` 生成、`meta.json` 必須キー埋め、`config.yaml` の保存を共通関数へ統一。
+- `src/gnn/train.py`: 同上（GNN 側の `model_best.pt` を契約名に合わせて保存）。
+- `src/fp/predict.py`: `predictions.csv` 出力、`meta.json` に `model_version` 等追記。
+- `src/gnn/predict.py`: 同上。
+- `tests/contract/test_artifacts.py`（新規）: 必須ファイル/キーの契約テスト追加。
+
+**実装（差分）**
+- 未実施（blocked + read-only のため）。
+
+**追加/更新したテスト**
+- なし。
+
+**検証コマンド**
+- 未実行。解除後に `pytest tests/contract -q`。
+
+**互換性影響（config/CLI/artifact）**
+- 変更なし（実装未実施）。実装時は `meta.json` の必須キー追加と artifact 構成の変更が発生予定。
+
+**work/queue.json**
+- read-only のため更新不可。タスクは blocked のため、`work/queue.json` の `id: "020"` を `blocked` に更新し、理由を `work/tasks/020_artifact_contract_impl.md` に合わせる必要があります。
+
+進めるにはどちらにしますか？
+1) `work/tasks/020_artifact_contract_impl.md` の blocked 条件を解除して続行  
+2) 010/015 の完了を反映させた上で、出力ディレクトリ規約の確定を待ってから再開

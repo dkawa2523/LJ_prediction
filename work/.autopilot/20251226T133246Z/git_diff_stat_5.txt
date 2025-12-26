@@ -1,0 +1,24 @@
+ README.md                         |  51 ++++++---
+ configs/dataset.yaml              |  57 ++--------
+ configs/dataset_quick.yaml        |  52 ++--------
+ configs/fp/predict.yaml           |  15 ++-
+ configs/fp/predict_quick.yaml     |  15 ++-
+ configs/fp/train.yaml             |  51 +++------
+ configs/fp/train_quick.yaml       |  53 +++-------
+ configs/gnn/predict.yaml          |  15 ++-
+ configs/gnn/train.yaml            |  52 +++-------
+ configs/gnn/train_mpnn_quick.yaml |  55 +++-------
+ configs/gnn/train_quick.yaml      |  53 +++-------
+ objective.md                      |  10 +-
+ scripts/build_dataset.py          |  36 ++++++-
+ scripts/fp_predict.py             |  13 ---
+ scripts/fp_train.py               |  13 ---
+ scripts/gnn_predict.py            |  13 ---
+ scripts/gnn_train.py              |  13 ---
+ src/common/config.py              |  77 +++++++++++++-
+ src/common/splitters.py           | 172 ++++++++++++++++++++++++++-----
+ src/fp/predict.py                 | 117 +++++++++++++--------
+ src/fp/train.py                   | 212 ++++++++++++++------------------------
+ src/gnn/predict.py                |  92 +++++++++++++----
+ src/gnn/train.py                  |  71 +++++++++----
+ 23 files changed, 692 insertions(+), 616 deletions(-)

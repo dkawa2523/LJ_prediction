@@ -1,0 +1,28 @@
+Using S90_artifacts_versioning then S95_tests_ci because Task 020 is about artifact contracts and contract tests.
+
+**Status**
+- Task 020 is blocked per `work/tasks/020_artifact_contract_impl.md`: Process/run dir standardization (010/015) is not confirmed in the task file.
+- Note: `work/queue.json` shows 010/015 as done, but the task file still marks 020 blocked; per instructions I must follow the task file.
+- This session is read-only, so I cannot modify code or `work/queue.json`.
+
+**Change Plan**
+- Once unblocked, touch `src/utils/artifacts.py`, `scripts/train.py`, `scripts/predict.py`, and `tests/contract/**` to implement/save artifacts and contract checks per `docs/04_ARTIFACTS_AND_VERSIONING.md`.
+
+**Implementation**
+- No code changes (blocked).
+
+**Tests**
+- None added/updated (blocked).
+
+**Verification Commands**
+- None run.
+
+**Compatibility Impact**
+- None (no changes).
+
+**Queue Update**
+- Not updated due to read-only; `work/queue.json` should set task 020 to `blocked` with the reason from `work/tasks/020_artifact_contract_impl.md`.
+
+Next steps:
+1) Confirm whether 010/015 are complete and update/unblock `work/tasks/020_artifact_contract_impl.md` (or tell me to proceed despite the block).
+2) Rerun with write access so I can implement the artifacts contract and tests.

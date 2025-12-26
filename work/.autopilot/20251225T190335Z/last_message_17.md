@@ -1,0 +1,865 @@
+Using S90_artifacts_versioning and S95_tests_ci to align artifact outputs with the contract and add contract tests.
+
+Read‑only sandbox in this session prevents file edits or updating `work/queue.json`, so the diffs below are proposed (not applied). Re‑run with write access or apply manually.
+
+**変更計画**
+- `src/utils/artifacts.py`: artifact 契約用の共通関数（hash/meta/run初期化/metrics/model dir 解決）を追加。
+- `src/fp/train.py`: dataset/config hash 計算、meta 必須キー、`model/` 配下の保存、`metrics.json` 追加。
+- `src/gnn/train.py`: 上記同等 + `featurizer_state.json` 保存、`model.ckpt` 生成。
+- `src/fp/evaluate.py`: `model/` 優先読み込み、meta 充実、`metrics.json` と拡張 columns で `predictions.csv` 保存。
+- `src/gnn/evaluate.py`: 上記同等。
+- `src/fp/predict.py`: `predictions.csv` 追加、meta に `model_version` 等を追加。
+- `src/gnn/predict.py`: 上記同等。
+- `tests/contract/test_artifact_contract.py`: meta/ファイル/列の契約テスト追加。
+
+**実装（提案差分）**
+```diff
+diff --git a/src/utils/artifacts.py b/src/utils/artifacts.py
+new file mode 100644
+--- /dev/null
++++ b/src/utils/artifacts.py
+@@
++from __future__ import annotations
++
++import hashlib
++import json
++import subprocess
++import warnings
++from dataclasses import asdict, is_dataclass
++from pathlib import Path
++from typing import Any, Dict, Iterable, Optional
++
++from src.common.config import dump_yaml
++from src.common.meta import build_meta, save_meta
++from src.common.utils import ensure_dir, load_json, save_json
++
++REQUIRED_META_KEYS = (
++    "run_id",
++    "process_name",
++    "created_at",
++    "git_sha",
++    "dataset_hash",
++    "config_hash",
++    "task_name",
++    "model_name",
++    "featureset_name",
++    "upstream_artifacts",
++    "tags",
++)
++
++
++def _normalize(obj: Any) -> Any:
++    if is_dataclass(obj):
++        return _normalize(asdict(obj))
++    if isinstance(obj, Path):
++        return str(obj)
++    if isinstance(obj, dict):
++        return {str(k): _normalize(v) for k, v in sorted(obj.items(), key=lambda kv: str(kv[0]))}
++    if isinstance(obj, (list, tuple)):
++        return [_normalize(v) for v in obj]
++    if isinstance(obj, set):
++        return sorted(_normalize(v) for v in obj)
++    try:
++        import numpy as np
++
++        if isinstance(obj, np.generic):
++            return obj.item()
++    except Exception:
++        pass
++    return obj
++
++
++def compute_config_hash(cfg: Dict[str, Any]) -> str:
++    payload = json.dumps(_normalize(cfg), sort_keys=True, ensure_ascii=True).encode("utf-8")
++    return hashlib.sha256(payload).hexdigest()[:12]
++
++
++def _update_hasher_from_file(hasher, path: Path) -> None:
++    with path.open("rb") as f:
++        for chunk in iter(lambda: f.read(1024 * 1024), b""):
++            hasher.update(chunk)
++
++
++def compute_dataset_hash(dataset_csv: Path, indices_dir: Optional[Path] = None) -> str:
++    hasher = hashlib.sha256()
++    _update_hasher_from_file(hasher, dataset_csv)
++    if indices_dir:
++        for split in ("train", "val", "test"):
++            path = indices_dir / f"{split}.txt"
++            if path.exists():
++                _update_hasher_from_file(hasher, path)
++    return hasher.hexdigest()[:12]
++
++
++def _repo_root() -> Path:
++    return Path(__file__).resolve().parents[2]
++
++
++def get_git_sha(repo_root: Optional[Path] = None) -> str:
++    repo_root = repo_root or _repo_root()
++    try:
++        res = subprocess.run(
++            ["git", "rev-parse", "HEAD"],
++            cwd=repo_root,
++            check=True,
++            text=True,
++            capture_output=True,
++        )
++        sha = res.stdout.strip()
++        return sha if sha else "unknown"
++    except Exception:
++        return "unknown"
++
++
++def derive_featureset_name(cfg: Dict[str, Any]) -> str:
++    if "featureset_name" in cfg:
++        return str(cfg["featureset_name"])
++    featurizer = cfg.get("featurizer", {}) or {}
++    if "name" in featurizer:
++        return str(featurizer["name"])
++    if "fingerprint" in featurizer:
++        suffix = "desc" if featurizer.get("add_descriptors") else "fp"
++        return f"{featurizer['fingerprint']}_{suffix}"
++    if "node_features" in featurizer:
++        return "graph"
++    backend = str(cfg.get("process", {}).get("backend", "")).strip()
++    return backend or "unknown"
++
++
++def build_contract_meta(
++    cfg: Dict[str, Any],
++    process_name: str,
++    dataset_hash: str,
++    config_hash: str,
++    upstream_artifacts: Optional[Iterable[str]] = None,
++    model_version: Optional[str] = None,
++    tags: Optional[Iterable[str]] = None,
++    extra: Optional[Dict[str, Any]] = None,
++) -> Dict[str, Any]:
++    meta_extra = {
++        "git_sha": get_git_sha(),
++        "dataset_hash": dataset_hash,
++        "config_hash": config_hash,
++        "task_name": str(cfg.get("task", {}).get("name", "unknown")),
++        "model_name": str(cfg.get("model", {}).get("name", "unknown")),
++        "featureset_name": derive_featureset_name(cfg),
++        "tags": list(tags or cfg.get("tags", []) or []),
++    }
++    if model_version:
++        meta_extra["model_version"] = model_version
++    if extra:
++        meta_extra.update(extra)
++    return build_meta(process_name=process_name, upstream_artifacts=upstream_artifacts, extra=meta_extra)
++
++
++def init_run_dir(
++    run_dir: Path,
++    cfg: Dict[str, Any],
++    process_name: str,
++    dataset_hash: str,
++    config_hash: str,
++    upstream_artifacts: Optional[Iterable[str]] = None,
++    model_version: Optional[str] = None,
++    extra_meta: Optional[Dict[str, Any]] = None,
++) -> Dict[str, Any]:
++    ensure_dir(run_dir)
++    dump_yaml(run_dir / "config.yaml", cfg)
++    meta = build_contract_meta(
++        cfg=cfg,
++        process_name=process_name,
++        dataset_hash=dataset_hash,
++        config_hash=config_hash,
++        upstream_artifacts=upstream_artifacts,
++        model_version=model_version,
++        extra=extra_meta,
++    )
++    save_meta(run_dir, meta)
++    return meta
++
++
++def save_metrics(run_dir: Path, metrics: Dict[str, Any]) -> Path:
++    path = run_dir / "metrics.json"
++    save_json(path, metrics)
++    return path
++
++
++def resolve_model_dir(model_artifact_dir: Path) -> Path:
++    model_dir = model_artifact_dir / "model"
++    if model_dir.exists():
++        return model_dir
++    legacy_dir = model_artifact_dir / "artifacts"
++    if legacy_dir.exists():
++        warnings.warn("artifacts/ is deprecated; use model/ instead.", DeprecationWarning, stacklevel=2)
++        return legacy_dir
++    raise FileNotFoundError(f"No model directory found under {model_artifact_dir}")
++
++
++def load_meta(run_dir: Path) -> Dict[str, Any]:
++    return load_json(Path(run_dir) / "meta.json")
+```
+
+```diff
+diff --git a/src/fp/train.py b/src/fp/train.py
+--- a/src/fp/train.py
++++ b/src/fp/train.py
+@@
+-from src.common.meta import build_meta, save_meta
++from src.utils.artifacts import compute_config_hash, compute_dataset_hash, init_run_dir, save_metrics
+@@
+-    logger = get_logger("fp_train", log_file=run_dir / "train.log")
+-
+-    dump_yaml(run_dir / "config.yaml", cfg)
+-    save_meta(run_dir, build_meta(process_name=str(cfg.get("process", {}).get("name", "train"))))
+-
+-    if not dataset_csv.exists():
++    logger = get_logger("fp_train", log_file=run_dir / "train.log")
++
++    if not dataset_csv.exists():
+         raise FileNotFoundError(f"dataset_csv not found: {dataset_csv}")
+     if not indices_dir.exists():
+         raise FileNotFoundError(f"indices_dir not found: {indices_dir}")
+     if not sdf_dir.exists():
+         raise FileNotFoundError(f"sdf_dir not found: {sdf_dir}")
++    dataset_hash = compute_dataset_hash(dataset_csv, indices_dir)
++    config_hash = compute_config_hash(cfg)
++    init_run_dir(
++        run_dir,
++        cfg,
++        process_name=str(cfg.get("process", {}).get("name", "train")),
++        dataset_hash=dataset_hash,
++        config_hash=config_hash,
++    )
+@@
+-    # Save artifacts
+-    artifacts_dir = ensure_dir(run_dir / "artifacts")
+-    model_path = artifacts_dir / "model.pkl"
++    # Save artifacts
++    artifacts_dir = ensure_dir(run_dir / "artifacts")
++    model_dir = ensure_dir(run_dir / "model")
++    model_path = model_dir / "model.ckpt"
+@@
+-    with open(model_path, "wb") as f:
+-        pickle.dump(model, f)
+-
+-    with open(artifacts_dir / "imputer.pkl", "wb") as f:
+-        pickle.dump(imputer, f)
+-    if scaler is not None:
+-        with open(artifacts_dir / "scaler.pkl", "wb") as f:
+-            pickle.dump(scaler, f)
++    with open(model_path, "wb") as f:
++        pickle.dump(model, f)
++    with open(model_dir / "preprocess.pkl", "wb") as f:
++        pickle.dump({"imputer": imputer, "scaler": scaler}, f)
++    save_json(model_dir / "featurizer_state.json", {"featurizer": feat_cfg, "feature_meta": feat_meta})
++    with open(artifacts_dir / "model.pkl", "wb") as f:
++        pickle.dump(model, f)
++    with open(artifacts_dir / "imputer.pkl", "wb") as f:
++        pickle.dump(imputer, f)
++    if scaler is not None:
++        with open(artifacts_dir / "scaler.pkl", "wb") as f:
++            pickle.dump(scaler, f)
+@@
+-    with open(artifacts_dir / "ad.pkl", "wb") as f:
++    with open(model_dir / "ad.pkl", "wb") as f:
+         pickle.dump(ad_artifact, f)
++    with open(artifacts_dir / "ad.pkl", "wb") as f:
++        pickle.dump(ad_artifact, f)
+@@
+-    save_json(run_dir / "metrics_val.json", metrics_val)
+-    save_json(run_dir / "metrics_test.json", metrics_test)
++    metrics = {
++        "val": metrics_val,
++        "test": metrics_test,
++        "n_train": int(len(y_train)),
++        "n_val": int(len(y_val)),
++        "n_test": int(len(y_test)),
++        "seed": int(seed),
++    }
++    save_metrics(run_dir, metrics)
++    save_json(run_dir / "metrics_val.json", metrics_val)
++    save_json(run_dir / "metrics_test.json", metrics_test)
+```
+
+```diff
+diff --git a/src/gnn/train.py b/src/gnn/train.py
+--- a/src/gnn/train.py
++++ b/src/gnn/train.py
+@@
+-from src.common.meta import build_meta, save_meta
++from src.utils.artifacts import compute_config_hash, compute_dataset_hash, init_run_dir, save_metrics
+@@
+-    artifacts_dir = ensure_dir(run_dir / "artifacts")
++    artifacts_dir = ensure_dir(run_dir / "artifacts")
++    model_dir = ensure_dir(run_dir / "model")
+@@
+-    dump_yaml(run_dir / "config.yaml", cfg)
+-    save_meta(run_dir, build_meta(process_name=str(cfg.get("process", {}).get("name", "train"))))
++    if not dataset_csv.exists():
++        raise FileNotFoundError(f"dataset_csv not found: {dataset_csv}")
++    if not indices_dir.exists():
++        raise FileNotFoundError(f"indices_dir not found: {indices_dir}")
++    if not sdf_dir.exists():
++        raise FileNotFoundError(f"sdf_dir not found: {sdf_dir}")
++    dataset_hash = compute_dataset_hash(dataset_csv, indices_dir)
++    config_hash = compute_config_hash(cfg)
++    init_run_dir(
++        run_dir,
++        cfg,
++        process_name=str(cfg.get("process", {}).get("name", "train")),
++        dataset_hash=dataset_hash,
++        config_hash=config_hash,
++    )
+@@
+-    best_path = artifacts_dir / "model_best.pt"
++    best_path = model_dir / "model.ckpt"
+@@
+-            torch.save(model.state_dict(), best_path)
++            torch.save(model.state_dict(), best_path)
++            torch.save(model.state_dict(), artifacts_dir / "model_best.pt")
+@@
+-    # Save artifacts
+-    with open(artifacts_dir / "graph_featurizer.pkl", "wb") as f:
+-        pickle.dump(gcfg, f)
++    # Save artifacts
++    with open(artifacts_dir / "graph_featurizer.pkl", "wb") as f:
++        pickle.dump(gcfg, f)
++    save_json(model_dir / "featurizer_state.json", {
++        "node_features": gcfg.node_features,
++        "edge_features": gcfg.edge_features,
++        "use_3d_pos": gcfg.use_3d_pos,
++        "add_global_descriptors": gcfg.add_global_descriptors,
++    })
+     dump_yaml(run_dir / "config_snapshot.yaml", cfg)
+-    save_json(run_dir / "metrics_val.json", val_metrics)
+-    save_json(run_dir / "metrics_test.json", test_metrics)
++    metrics = {
++        "val": val_metrics,
++        "test": test_metrics,
++        "n_train": int(len(train_data)),
++        "n_val": int(len(val_data)),
++        "n_test": int(len(test_data)),
++        "seed": int(seed),
++    }
++    save_metrics(run_dir, metrics)
++    save_json(run_dir / "metrics_val.json", val_metrics)
++    save_json(run_dir / "metrics_test.json", test_metrics)
+@@
+-        with open(artifacts_dir / "ad.pkl", "wb") as f:
++        with open(model_dir / "ad.pkl", "wb") as f:
+             pickle.dump(ad_artifact, f)
++        with open(artifacts_dir / "ad.pkl", "wb") as f:
++            pickle.dump(ad_artifact, f)
+```
+
+```diff
+diff --git a/src/fp/evaluate.py b/src/fp/evaluate.py
+--- a/src/fp/evaluate.py
++++ b/src/fp/evaluate.py
+@@
+-from src.common.config import dump_yaml, load_config
+-from src.common.meta import build_meta, save_meta
++from src.common.config import load_config
+ from src.common.metrics import regression_metrics
+ from src.common.splitters import load_split_indices
+ from src.common.utils import ensure_dir, get_logger, save_json
++from src.utils.artifacts import compute_config_hash, compute_dataset_hash, init_run_dir, load_meta, resolve_model_dir, save_metrics
+@@
+-    artifacts_dir = model_artifact_dir / "artifacts"
+-    if not artifacts_dir.exists():
+-        raise FileNotFoundError(f"Artifacts dir not found: {artifacts_dir}")
++    model_dir = resolve_model_dir(model_artifact_dir)
+@@
+-    dump_yaml(run_dir / "config.yaml", cfg)
+-    save_meta(
+-        run_dir,
+-        build_meta(
+-            process_name=str(cfg.get("process", {}).get("name", "evaluate")),
+-            upstream_artifacts=[str(model_artifact_dir)],
+-        ),
+-    )
++    train_meta = load_meta(model_artifact_dir) if (model_artifact_dir / "meta.json").exists() else {}
++    model_version = str(train_meta.get("run_id", "unknown"))
+@@
+-    if not dataset_csv.exists():
++    if not dataset_csv.exists():
+         raise FileNotFoundError(f"dataset_csv not found: {dataset_csv}")
+@@
+-    df = pd.read_csv(dataset_csv)
++    dataset_hash = compute_dataset_hash(dataset_csv, indices_dir)
++    config_hash = compute_config_hash(cfg)
++    run_meta = init_run_dir(
++        run_dir,
++        cfg,
++        process_name=str(cfg.get("process", {}).get("name", "evaluate")),
++        dataset_hash=dataset_hash,
++        config_hash=config_hash,
++        upstream_artifacts=[str(model_artifact_dir)],
++        model_version=model_version,
++    )
++    run_id = run_meta["run_id"]
++
++    df = pd.read_csv(dataset_csv)
+@@
+-    with open(artifacts_dir / "imputer.pkl", "rb") as f:
+-        imputer = pickle.load(f)
+-    scaler = None
+-    scaler_path = artifacts_dir / "scaler.pkl"
+-    if scaler_path.exists():
+-        with open(scaler_path, "rb") as f:
+-            scaler = pickle.load(f)
+-    with open(artifacts_dir / "model.pkl", "rb") as f:
+-        model = pickle.load(f)
++    preprocess_path = model_dir / "preprocess.pkl"
++    if preprocess_path.exists():
++        with open(preprocess_path, "rb") as f:
++            preprocess = pickle.load(f)
++        imputer = preprocess["imputer"]
++        scaler = preprocess.get("scaler")
++    else:
++        with open(model_dir / "imputer.pkl", "rb") as f:
++            imputer = pickle.load(f)
++        scaler = None
++        scaler_path = model_dir / "scaler.pkl"
++        if scaler_path.exists():
++            with open(scaler_path, "rb") as f:
++                scaler = pickle.load(f)
++    model_path = model_dir / "model.ckpt"
++    if not model_path.exists():
++        model_path = model_dir / "model.pkl"
++    with open(model_path, "rb") as f:
++        model = pickle.load(f)
+@@
+-        for cid, yt, yp in zip(ids, y.tolist(), preds.tolist()):
+-            rows.append({"sample_id": cid, "y_true": yt, "y_pred": yp, "split": split_name})
++        for cid, yt, yp in zip(ids, y.tolist(), preds.tolist()):
++            rows.append(
++                {
++                    "sample_id": cid,
++                    "y_true": yt,
++                    "y_pred": yp,
++                    "split": split_name,
++                    "model_name": str(train_cfg.get("model", {}).get("name", "unknown")),
++                    "model_version": model_version,
++                    "dataset_hash": dataset_hash,
++                    "run_id": run_id,
++                }
++            )
+@@
+-    for split_name, metrics in metrics_by_split.items():
++    metrics = {
++        "train": metrics_by_split.get("train", {}),
++        "val": metrics_by_split.get("val", {}),
++        "test": metrics_by_split.get("test", {}),
++        "n_train": int(len(indices.get("train", []))),
++        "n_val": int(len(indices.get("val", []))),
++        "n_test": int(len(indices.get("test", []))),
++    }
++    save_metrics(run_dir, metrics)
++    for split_name, metrics in metrics_by_split.items():
+         if not metrics:
+             continue
+         save_json(run_dir / f"metrics_{split_name}.json", metrics)
+```
+
+```diff
+diff --git a/src/gnn/evaluate.py b/src/gnn/evaluate.py
+--- a/src/gnn/evaluate.py
++++ b/src/gnn/evaluate.py
+@@
+-from src.common.config import dump_yaml, load_config
++from src.common.config import load_config
+ from src.common.io import load_sdf_mol, read_csv, sdf_path_from_cas
+-from src.common.meta import build_meta, save_meta
+ from src.common.metrics import regression_metrics
+ from src.common.splitters import load_split_indices
+-from src.common.utils import ensure_dir, get_logger, save_json
+-from src.gnn.featurizer_graph import featurize_mol_to_pyg
++from src.common.utils import ensure_dir, get_logger, load_json, save_json
++from src.gnn.featurizer_graph import GraphFeaturizerConfig, featurize_mol_to_pyg
+ from src.gnn.models import GCNRegressor, MPNNRegressor
++from src.utils.artifacts import compute_config_hash, compute_dataset_hash, init_run_dir, load_meta, resolve_model_dir, save_metrics
+@@
+-    artifacts_dir = model_artifact_dir / "artifacts"
+-    if not artifacts_dir.exists():
+-        raise FileNotFoundError(f"Artifacts dir not found: {artifacts_dir}")
++    model_dir = resolve_model_dir(model_artifact_dir)
+@@
+-    dump_yaml(run_dir / "config.yaml", cfg)
+-    save_meta(
+-        run_dir,
+-        build_meta(
+-            process_name=str(cfg.get("process", {}).get("name", "evaluate")),
+-            upstream_artifacts=[str(model_artifact_dir)],
+-        ),
+-    )
++    train_meta = load_meta(model_artifact_dir) if (model_artifact_dir / "meta.json").exists() else {}
++    model_version = str(train_meta.get("run_id", "unknown"))
+@@
+-    if not dataset_csv.exists():
++    if not dataset_csv.exists():
+         raise FileNotFoundError(f"dataset_csv not found: {dataset_csv}")
+@@
+-    df = read_csv(dataset_csv)
++    dataset_hash = compute_dataset_hash(dataset_csv, indices_dir)
++    config_hash = compute_config_hash(cfg)
++    run_meta = init_run_dir(
++        run_dir,
++        cfg,
++        process_name=str(cfg.get("process", {}).get("name", "evaluate")),
++        dataset_hash=dataset_hash,
++        config_hash=config_hash,
++        upstream_artifacts=[str(model_artifact_dir)],
++        model_version=model_version,
++    )
++    run_id = run_meta["run_id"]
++
++    df = read_csv(dataset_csv)
+@@
+-    with open(artifacts_dir / "graph_featurizer.pkl", "rb") as f:
+-        gcfg = pickle.load(f)
++    featurizer_state = model_dir / "featurizer_state.json"
++    if featurizer_state.exists():
++        gcfg = GraphFeaturizerConfig(**load_json(featurizer_state))
++    else:
++        with open(model_dir / "graph_featurizer.pkl", "rb") as f:
++            gcfg = pickle.load(f)
+@@
+-    state_path = artifacts_dir / "model_best.pt"
++    state_path = model_dir / "model.ckpt"
++    if not state_path.exists():
++        state_path = model_dir / "model_best.pt"
+@@
+-        for cid, yt, yp in zip(ids, y_true.tolist(), y_pred.tolist()):
+-            rows.append({"sample_id": cid, "y_true": yt, "y_pred": yp, "split": split_name})
++        for cid, yt, yp in zip(ids, y_true.tolist(), y_pred.tolist()):
++            rows.append(
++                {
++                    "sample_id": cid,
++                    "y_true": yt,
++                    "y_pred": yp,
++                    "split": split_name,
++                    "model_name": str(train_cfg.get("model", {}).get("name", "unknown")),
++                    "model_version": model_version,
++                    "dataset_hash": dataset_hash,
++                    "run_id": run_id,
++                }
++            )
+@@
+-    for split_name, metrics in metrics_by_split.items():
++    metrics = {
++        "train": metrics_by_split.get("train", {}),
++        "val": metrics_by_split.get("val", {}),
++        "test": metrics_by_split.get("test", {}),
++        "n_train": int(len(indices.get("train", []))),
++        "n_val": int(len(indices.get("val", []))),
++        "n_test": int(len(indices.get("test", []))),
++    }
++    save_metrics(run_dir, metrics)
++    for split_name, metrics in metrics_by_split.items():
+         if not metrics:
+             continue
+         save_json(run_dir / f"metrics_{split_name}.json", metrics)
+```
+
+```diff
+diff --git a/src/fp/predict.py b/src/fp/predict.py
+--- a/src/fp/predict.py
++++ b/src/fp/predict.py
+@@
+-from src.common.config import dump_yaml, load_config
+-from src.common.meta import build_meta, save_meta
++from src.common.config import load_config
+ from src.common.io import load_sdf_mol, read_csv, sdf_path_from_cas
+ from src.common.utils import ensure_dir, get_logger, save_json
+ from src.fp.featurizer_fp import FPConfig, featurize_mol, morgan_bitvect
++from src.utils.artifacts import compute_config_hash, compute_dataset_hash, init_run_dir, load_meta, resolve_model_dir
+@@
+-    artifacts_dir = model_artifact_dir / "artifacts"
+-    if not artifacts_dir.exists():
+-        raise FileNotFoundError(f"Artifacts dir not found: {artifacts_dir}")
++    model_dir = resolve_model_dir(model_artifact_dir)
+@@
+-    logger = get_logger("fp_predict", log_file=out_dir / "predict.log")
+-    dump_yaml(out_dir / "config.yaml", cfg)
+-    save_meta(
+-        out_dir,
+-        build_meta(
+-            process_name=str(cfg.get("process", {}).get("name", "predict")),
+-            upstream_artifacts=[str(model_artifact_dir)],
+-        ),
+-    )
++    logger = get_logger("fp_predict", log_file=out_dir / "predict.log")
++    train_meta = load_meta(model_artifact_dir) if (model_artifact_dir / "meta.json").exists() else {}
++    model_version = str(train_meta.get("run_id", "unknown"))
+@@
+-    with open(artifacts_dir / "imputer.pkl", "rb") as f:
+-        imputer = pickle.load(f)
+-    scaler = None
+-    scaler_path = artifacts_dir / "scaler.pkl"
+-    if scaler_path.exists():
+-        with open(scaler_path, "rb") as f:
+-            scaler = pickle.load(f)
+-    with open(artifacts_dir / "model.pkl", "rb") as f:
+-        model = pickle.load(f)
++    preprocess_path = model_dir / "preprocess.pkl"
++    if preprocess_path.exists():
++        with open(preprocess_path, "rb") as f:
++            preprocess = pickle.load(f)
++        imputer = preprocess["imputer"]
++        scaler = preprocess.get("scaler")
++    else:
++        with open(model_dir / "imputer.pkl", "rb") as f:
++            imputer = pickle.load(f)
++        scaler = None
++        scaler_path = model_dir / "scaler.pkl"
++        if scaler_path.exists():
++            with open(scaler_path, "rb") as f:
++                scaler = pickle.load(f)
++    model_path = model_dir / "model.ckpt"
++    if not model_path.exists():
++        model_path = model_dir / "model.pkl"
++    with open(model_path, "rb") as f:
++        model = pickle.load(f)
+@@
+-    with open(artifacts_dir / "ad.pkl", "rb") as f:
++    with open(model_dir / "ad.pkl", "rb") as f:
+         ad_artifact = pickle.load(f)
+@@
+-    result = {
++    dataset_hash = str(train_meta.get("dataset_hash", "unknown"))
++    if dataset_hash == "unknown":
++        dataset_hash = compute_dataset_hash(
++            Path(train_cfg.get("data", {}).get("dataset_csv", dataset_csv)),
++            Path(train_cfg.get("data", {}).get("indices_dir", "data/processed/indices")),
++        )
++    config_hash = compute_config_hash(cfg)
++    run_meta = init_run_dir(
++        out_dir,
++        cfg,
++        process_name=str(cfg.get("process", {}).get("name", "predict")),
++        dataset_hash=dataset_hash,
++        config_hash=config_hash,
++        upstream_artifacts=[str(model_artifact_dir)],
++        model_version=model_version,
++    )
++    run_id = run_meta["run_id"]
++
++    result = {
+         "cas": cas,
+         "query": query,
+         "prediction": pred,
+@@
+-    save_json(out_dir / f"prediction_{cas}.json", result)
++    pred_df = pd.DataFrame(
++        [
++            {
++                "sample_id": cas,
++                "y_pred": pred,
++                "model_name": str(train_cfg.get("model", {}).get("name", "unknown")),
++                "model_version": model_version,
++                "dataset_hash": dataset_hash,
++                "run_id": run_id,
++            }
++        ]
++    )
++    pred_df.to_csv(out_dir / "predictions.csv", index=False)
++    save_json(out_dir / f"prediction_{cas}.json", result)
+```
+
+```diff
+diff --git a/src/gnn/predict.py b/src/gnn/predict.py
+--- a/src/gnn/predict.py
++++ b/src/gnn/predict.py
+@@
+-from src.common.config import dump_yaml, load_config
+-from src.common.meta import build_meta, save_meta
++from src.common.config import load_config
+ from src.common.io import load_sdf_mol, read_csv, sdf_path_from_cas
+-from src.common.utils import ensure_dir, get_logger, save_json
++from src.common.utils import ensure_dir, get_logger, load_json, save_json
+ from src.fp.featurizer_fp import morgan_bitvect
+-from src.gnn.featurizer_graph import featurize_mol_to_pyg
++from src.gnn.featurizer_graph import GraphFeaturizerConfig, featurize_mol_to_pyg
+ from src.gnn.models import GCNRegressor, MPNNRegressor
++from src.utils.artifacts import compute_config_hash, compute_dataset_hash, init_run_dir, load_meta, resolve_model_dir
+@@
+-    artifacts_dir = model_artifact_dir / "artifacts"
+-    if not artifacts_dir.exists():
+-        raise FileNotFoundError(f"Artifacts dir not found: {artifacts_dir}")
++    model_dir = resolve_model_dir(model_artifact_dir)
+@@
+-    logger = get_logger("gnn_predict", log_file=out_dir / "predict.log")
+-    dump_yaml(out_dir / "config.yaml", cfg)
+-    save_meta(
+-        out_dir,
+-        build_meta(
+-            process_name=str(cfg.get("process", {}).get("name", "predict")),
+-            upstream_artifacts=[str(model_artifact_dir)],
+-        ),
+-    )
++    logger = get_logger("gnn_predict", log_file=out_dir / "predict.log")
++    train_meta = load_meta(model_artifact_dir) if (model_artifact_dir / "meta.json").exists() else {}
++    model_version = str(train_meta.get("run_id", "unknown"))
+@@
+-    with open(artifacts_dir / "graph_featurizer.pkl", "rb") as f:
+-        gcfg = pickle.load(f)
++    featurizer_state = model_dir / "featurizer_state.json"
++    if featurizer_state.exists():
++        gcfg = GraphFeaturizerConfig(**load_json(featurizer_state))
++    else:
++        with open(model_dir / "graph_featurizer.pkl", "rb") as f:
++            gcfg = pickle.load(f)
+@@
+-    state_path = artifacts_dir / "model_best.pt"
++    state_path = model_dir / "model.ckpt"
++    if not state_path.exists():
++        state_path = model_dir / "model_best.pt"
+@@
+-    ad_path = artifacts_dir / "ad.pkl"
++    ad_path = model_dir / "ad.pkl"
+@@
+-    result = {
++    dataset_hash = str(train_meta.get("dataset_hash", "unknown"))
++    if dataset_hash == "unknown":
++        dataset_hash = compute_dataset_hash(
++            Path(train_cfg.get("data", {}).get("dataset_csv", dataset_csv)),
++            Path(train_cfg.get("data", {}).get("indices_dir", "data/processed/indices")),
++        )
++    config_hash = compute_config_hash(cfg)
++    run_meta = init_run_dir(
++        out_dir,
++        cfg,
++        process_name=str(cfg.get("process", {}).get("name", "predict")),
++        dataset_hash=dataset_hash,
++        config_hash=config_hash,
++        upstream_artifacts=[str(model_artifact_dir)],
++        model_version=model_version,
++    )
++    run_id = run_meta["run_id"]
++
++    result = {
+         "cas": cas,
+         "query": query,
+         "prediction": pred,
+@@
+-    save_json(out_dir / f"prediction_{cas}.json", result)
++    pred_df = pd.DataFrame(
++        [
++            {
++                "sample_id": cas,
++                "y_pred": pred,
++                "model_name": str(train_cfg.get("model", {}).get("name", "unknown")),
++                "model_version": model_version,
++                "dataset_hash": dataset_hash,
++                "run_id": run_id,
++            }
++        ]
++    )
++    pred_df.to_csv(out_dir / "predictions.csv", index=False)
++    save_json(out_dir / f"prediction_{cas}.json", result)
+```
+
+```diff
+diff --git a/tests/contract/test_artifact_contract.py b/tests/contract/test_artifact_contract.py
+new file mode 100644
+--- /dev/null
++++ b/tests/contract/test_artifact_contract.py
+@@
++from __future__ import annotations
++
++import json
++from pathlib import Path
++
++import pandas as pd
++
++from src.utils.artifacts import (
++    REQUIRED_META_KEYS,
++    compute_config_hash,
++    compute_dataset_hash,
++    init_run_dir,
++    save_metrics,
++)
++
++
++def _make_dataset(tmp_path: Path) -> tuple[Path, Path]:
++    dataset_csv = tmp_path / "dataset.csv"
++    dataset_csv.write_text("CAS,prop\nA,1.0\n", encoding="utf-8")
++    indices_dir = tmp_path / "indices"
++    indices_dir.mkdir(parents=True, exist_ok=True)
++    (indices_dir / "train.txt").write_text("0\n", encoding="utf-8")
++    (indices_dir / "val.txt").write_text("", encoding="utf-8")
++    (indices_dir / "test.txt").write_text("", encoding="utf-8")
++    return dataset_csv, indices_dir
++
++
++def test_meta_contract_keys(tmp_path: Path) -> None:
++    dataset_csv, indices_dir = _make_dataset(tmp_path)
++    cfg = {
++        "process": {"name": "train"},
++        "task": {"name": "lj_epsilon"},
++        "model": {"name": "lightgbm"},
++        "featurizer": {"fingerprint": "morgan"},
++    }
++    dataset_hash = compute_dataset_hash(dataset_csv, indices_dir)
++    config_hash = compute_config_hash(cfg)
++    run_dir = tmp_path / "run"
++    init_run_dir(run_dir, cfg, "train", dataset_hash, config_hash)
++    meta = json.loads((run_dir / "meta.json").read_text(encoding="utf-8"))
++    for key in REQUIRED_META_KEYS:
++        assert key in meta
++
++
++def test_train_artifact_contract(tmp_path: Path) -> None:
++    dataset_csv, indices_dir = _make_dataset(tmp_path)
++    cfg = {
++        "process": {"name": "train"},
++        "task": {"name": "lj_epsilon"},
++        "model": {"name": "lightgbm"},
++        "featurizer": {"fingerprint": "morgan"},
++    }
++    dataset_hash = compute_dataset_hash(dataset_csv, indices_dir)
++    config_hash = compute_config_hash(cfg)
++    run_dir = tmp_path / "train_run"
++    init_run_dir(run_dir, cfg, "train", dataset_hash, config_hash)
++    save_metrics(run_dir, {"val": {"rmse": 1.0}})
++    model_dir = run_dir / "model"
++    model_dir.mkdir(parents=True, exist_ok=True)
++    (model_dir / "model.ckpt").write_bytes(b"mock")
++    (model_dir / "preprocess.pkl").write_bytes(b"mock")
++    (model_dir / "featurizer_state.json").write_text("{}", encoding="utf-8")
++
++    assert (run_dir / "config.yaml").exists()
++    assert (run_dir / "meta.json").exists()
++    assert (run_dir / "metrics.json").exists()
++    assert (model_dir / "model.ckpt").exists()
++
++
++def test_predictions_contract_columns(tmp_path: Path) -> None:
++    pred_path = tmp_path / "predictions.csv"
++    df = pd.DataFrame([{"sample_id": "A", "y_pred": 1.23}])
++    df.to_csv(pred_path, index=False)
++    loaded = pd.read_csv(pred_path)
++    assert "sample_id" in loaded.columns
++    assert "y_pred" in loaded.columns
+```
+
+**追加/更新したテスト**
+- `tests/contract/test_artifact_contract.py`: meta 必須キーと `metrics.json`/`model.ckpt`/`predictions.csv` の契約をチェック。
+
+**検証コマンド**
+```bash
+pytest -q tests/contract/test_artifact_contract.py
+pytest -q
+```
+
+**互換性影響**
+- artifact: `model/` 配下の `model.ckpt`/`preprocess.pkl`/`featurizer_state.json` を追加（`artifacts/` は読み取り互換とし、書き込みは当面維持する想定）。
+- predictions: `predictions.csv` に `model_name`/`model_version`/`dataset_hash`/`run_id` 列を追加（必須列は維持）。
+- config/CLI: 追加の config 変更なし。`featureset_name` は featurizer 由来で自動決定（必要なら `featureset_name` を config に追加推奨）。
+
+**Queue**
+- このセッションでは書き込み不可のため `work/queue.json` を更新できません。`work/queue.json` の `id: "020"` を `blocked` にして理由を「read-only sandboxのため適用不可」と記載してください。
+
+次のアクション候補:
+1) 書き込み可能な環境で再実行して適用する
+2) 上記差分を適用後に `pytest -q` を実行する

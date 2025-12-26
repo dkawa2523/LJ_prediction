@@ -1,0 +1,35 @@
+Using skill S95_tests_ci to add pytest smoke coverage for task 090.
+
+Added a CLI-level FP train/predict smoke test using fixture configs and artifact validation, and marked the task done in `work/queue.json`.
+
+**Change Plan**
+- `tests/integration/test_smoke_fp_train_predict.py`: add FP train/predict CLI smoke test with fixture config + artifact validation.
+- `work/queue.json`: set task 090 status to done after verification.
+
+**Implementation**
+```diff
++++ tests/integration/test_smoke_fp_train_predict.py
++def test_smoke_fp_train_predict(tmp_path: Path) -> None:
++    pytest.importorskip("rdkit")
++    pytest.importorskip("sklearn")
++    ...
++    subprocess.run([sys.executable, "scripts/train.py", "--config", ...], check=True)
++    validate_train_artifacts(...)
++    subprocess.run([sys.executable, "scripts/predict.py", "--config", ..., "--query", "64-17-5"], check=True)
++    validate_predict_artifacts(...)
+```
+
+**Tests Added/Updated**
+- `tests/integration/test_smoke_fp_train_predict.py`
+
+**Verification**
+- `pytest -q` (16 passed)
+
+**Compatibility Impact**
+- config/CLI/artifact: none; test-only changes.
+
+**Queue**
+- `work/queue.json`: task 090 marked done.
+
+Next step (optional):
+1) Add a GitHub Actions workflow to run `pytest -q` on push/PR.

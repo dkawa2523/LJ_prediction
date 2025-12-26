@@ -1,0 +1,36 @@
+Using S90_artifacts_versioning and S95_tests_ci to align the artifact contract and contract-test expectations.
+
+Task 020 stays blocked per `work/tasks/020_artifact_contract_impl.md`, so I did not change code. Also, the sandbox is read-only, so I cannot update `work/queue.json` myself. Note: `work/queue.json` shows 010/015 as done, which conflicts with the task file’s block reason—please confirm whether the block is still valid.
+
+**Change Plan**
+- `src/utils/artifacts.py`: add common helpers to write `config.yaml`, `meta.json`, `metrics.json`, `model.ckpt`, and `predictions.csv` once output paths are finalized.
+- `scripts/train.py`: after backend run returns the run dir, call artifact helpers to normalize filenames/locations and meta keys.
+- `scripts/predict.py`: after backend run, emit `predictions.csv` and update meta with `model_version`.
+- `tests/contract/test_artifacts.py`: add contract tests for required files/keys from `docs/04_ARTIFACTS_AND_VERSIONING.md`.
+
+**Implementation (diff)**
+- No changes; task remains blocked.
+
+**Tests**
+- None added or updated.
+
+**Verification**
+- Not run (blocked, no changes).
+
+**Compatibility Impact**
+- None yet. Once unblocked, artifact file names/paths will change to match the contract.
+
+**Queue Update**
+- Required but not applied due to read-only sandbox. Suggested patch:
+```diff
+--- a/work/queue.json
++++ b/work/queue.json
+@@
+-      "status": "in_progress",
++      "status": "blocked",
++      "blocked_reason": "Process/run dir standardization (010/015) not confirmed; see work/tasks/020_artifact_contract_impl.md",
+```
+
+Next steps (pick one):
+1) Confirm the block is still valid, and I can proceed once you update the task file or queue accordingly.  
+2) If 010/015 are truly complete, update `work/tasks/020_artifact_contract_impl.md` to remove the block and rerun me with write access so I can implement and update `work/queue.json`.

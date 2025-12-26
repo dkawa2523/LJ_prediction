@@ -1,0 +1,32 @@
+Using S90_artifacts_versioning and S95_tests_ci because this task is about artifact contracts and contract tests.
+
+**Status**
+- Blocked by `work/tasks/020_artifact_contract_impl.md` (run dir standardization 010/015 not confirmed there).
+- `work/queue.json` shows 010/015 as done; please confirm whether to unblock task 020 or update the task file.
+
+**変更計画（ファイル単位）**
+- `src/utils/artifacts.py`: add artifact save helpers (config/meta/metrics/model/predictions), compute `config_hash`/`dataset_hash`/`git_sha`, enforce docs/04 layout.
+- `src/common/meta.py`: extend meta builder to include required keys or accept precomputed values.
+- `src/fp/train.py` and `src/gnn/train.py`: switch to artifact helper, write `model/model.ckpt`, `metrics.json`, `preprocess.pkl`/`featurizer_state.json`, ensure `config.yaml` + `meta.json`.
+- `src/fp/predict.py` and `src/gnn/predict.py`: emit `predictions.csv` with required columns and meta `model_version`; keep JSON output optional.
+- `tests/contract/test_artifact_contract.py`: add contract tests for required files/keys per docs/04.
+
+**実装（差分が分かるように）**
+- N/A (task is blocked; no code changes made).
+
+**追加/更新したテスト**
+- N/A.
+
+**検証コマンド**
+- N/A (read-only). Proposed when unblocked: `pytest tests/contract -q`.
+
+**互換性影響（config/CLI/artifact）**
+- No changes applied.
+- When implemented: artifact filenames/paths will change (`model.pkl` → `model/model.ckpt`, `metrics_*.json` → `metrics.json`, new `predictions.csv` on predict), so predict/evaluate will be updated to read new locations.
+
+**Queue更新**
+- Not updated: sandbox is read-only and task is blocked per `work/tasks/020_artifact_contract_impl.md`. Please update `work/queue.json` to `blocked` or confirm unblocking.
+
+Next steps:
+1) Confirm whether task 020 should be unblocked now that 010/015 are done; if yes, update `work/tasks/020_artifact_contract_impl.md` or tell me to proceed.  
+2) Rerun with `sandbox_mode=workspace-write` so I can implement changes and update `work/queue.json`.

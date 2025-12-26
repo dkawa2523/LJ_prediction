@@ -1,0 +1,10 @@
+task:
+  name: "lj_sigma"
+  type: "regression"
+  target_columns:
+    - "lj_sigma_A"
+  metrics: "regression"
+  target_col: "lj_sigma_A"
+
+data:
+  target_col: "lj_sigma_A"

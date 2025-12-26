@@ -1,0 +1,30 @@
+Using skills S90_artifacts_versioning and S95_tests_ci because this task is about artifact contracts and contract tests.
+
+Task 020 is blocked per `work/tasks/020_artifact_contract_impl.md`, so I made no code changes. Note: `work/queue.json` shows 010/015 as done, which conflicts with the task file’s blocked reason—please confirm whether the task is now unblocked and the output-dir standard is fixed.
+
+**Change Plan**
+- `src/utils/artifacts.py` add shared artifact save helpers (deferred until output dir spec is confirmed)
+- `scripts/train.py` call artifact save for config/meta/metrics/model (deferred)
+- `scripts/predict.py` save predictions + meta fields like model_version (deferred)
+- `tests/contract/test_artifacts_contract.py` add contract checks for required files/keys (deferred)
+
+**Implementation**
+- No changes (blocked by task file).
+
+**Tests**
+- None added or updated.
+
+**Verification**
+- Not run.
+
+**Compatibility Impact**
+- None (no changes).
+
+**Queue Status**
+- Intended update: set task 020 status to `blocked` in `work/queue.json` with the reason from `work/tasks/020_artifact_contract_impl.md`.
+- I can’t edit `work/queue.json` due to read-only sandbox; please update it manually or allow write access.
+
+Next steps
+1) Confirm whether 010/015 are truly complete and the output directory/namespace convention is fixed; if yes, unblock task 020 in `work/tasks/020_artifact_contract_impl.md`.
+2) Let me know the finalized artifact output path pattern (or point to the doc/update), so I can implement the contract functions.
+3) If you want me to update `work/queue.json`, please run with write access or update it yourself and tell me once it’s done.

@@ -1,0 +1,32 @@
+Using S90_artifacts_versioning and S95_tests_ci because this task is about implementing the artifact contract and adding contract tests.
+
+Task 020 is still marked blocked in `work/tasks/020_artifact_contract_impl.md` (run dir standardization from 010/015 not finalized), so I did not change code. The sandbox is read-only, so I also cannot update `work/queue.json`.
+
+**Change Plan**
+- `src/utils/artifacts.py`: add centralized helpers to compute `config_hash`/`dataset_hash`, write `config.yaml`, `meta.json`, `metrics.json`, `predictions.csv`, and standardize `model/` layout.
+- `src/common/meta.py`: extend meta assembly to include required keys (`run_id`, `process_name`, `created_at`, `git_sha`, `dataset_hash`, `config_hash`, `task_name`, `model_name`, `featureset_name`, `upstream_artifacts`, `tags`).
+- `src/fp/train.py` and `src/gnn/train.py`: route artifact saving through new helpers; write `model/model.ckpt` (or backend-specific) and `metrics.json` per docs/04.
+- `src/fp/predict.py` and `src/gnn/predict.py`: emit `predictions.csv` with required columns and meta including `model_version`.
+- `tests/contract/test_artifacts_contract.py`: add contract test for required files/keys/columns.
+
+**Implementation (Blocked)**
+- No diff applied; blocked per `work/tasks/020_artifact_contract_impl.md`.
+
+**Tests**
+- None added/updated.
+
+**Verification Commands (after unblock)**
+- `pytest tests/contract -q`
+- `python scripts/train.py --config <composed_train_config>`
+- `python scripts/predict.py --config <composed_predict_config> --query <cas_or_formula>`
+
+**Compatibility Impact**
+- Artifact filenames/paths will change (e.g., `config_snapshot.yaml`/`metrics_val.json` → `config.yaml`/`metrics.json`, `artifacts/` → `model/`), so any downstream code referencing old paths must be updated or shimmed.
+- `meta.json` schema will expand to include required keys; consumers should tolerate additional fields.
+
+**Queue Status**
+- `work/queue.json` should mark task 020 as `blocked` with reason “Process/run dir standardization (010/015) not finalized per task file.” I cannot edit due to read-only sandbox.
+
+Next steps:
+1) Confirm whether 010/015 fully resolved the run dir standardization; if yes, update `work/tasks/020_artifact_contract_impl.md` to remove the block or tell me to proceed anyway.  
+2) Re-run with write access so I can implement the changes and update `work/queue.json`.

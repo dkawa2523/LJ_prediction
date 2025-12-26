@@ -1,0 +1,32 @@
+S90_artifacts_versioning と S95_tests_ci を使用しました（artifact契約とcontract testの指針のため）。
+
+**Status**
+- `work/tasks/020_artifact_contract_impl.md` が Blocked 指定のため実装は保留中です（run dir 標準化が前提）。
+- `work/queue.json` では依存 `010/015` が done になっており、整合性の確認が必要です。
+- 書き込み不可のため、キュー更新を含む変更は行っていません。
+- ブロック解除済みで進めてよいか、確認をお願いします。
+
+**変更計画（ファイル単位）**
+- `src/utils/artifacts.py`: `config.yaml`/`meta.json`/`metrics.json`/`predictions.csv`/`model.*` 保存の共通関数を追加。
+- `src/common/meta.py`: 必須キー（run_id/process_name/created_at/git_sha/dataset_hash/config_hash/task_name/model_name/featureset_name/upstream_artifacts/tags）を生成できるヘルパを追加。
+- `src/fp/train.py` と `src/gnn/train.py`: `model/` 配下に `model.ckpt` を保存し、`metrics.json` と meta 必須キーを出力。
+- `src/fp/predict.py` と `src/gnn/predict.py`: `predictions.csv` を必須列で出力し、meta に `model_version` を追記。
+- `src/fp/evaluate.py` と `src/gnn/evaluate.py`: `metrics.json` 生成と meta の必須キー反映、predictions の列契約維持。
+- `tests/contract/test_artifacts_contract.py`: 必須ファイル/キー/列の contract test を追加。
+
+**実装（差分）**  
+今回は未実装です（blocked のため差分なし）。
+
+**追加/更新したテスト**  
+なし（blocked）。
+
+**検証コマンド**  
+未実施。ブロック解除後に `pytest tests/contract -q` を想定しています。
+
+**互換性影響（config/CLI/artifact）**  
+未変更（今回の作業は保留）。
+
+**work/queue.json**  
+`work/queue.json` を `blocked` に更新できていません（read-only）。更新が必要なら手元で `020` の status を `blocked` にし、理由を記載してください。
+
+確認: 依存タスク `010/015` は完了済みとして、このタスクを unblock して進めてよいですか？

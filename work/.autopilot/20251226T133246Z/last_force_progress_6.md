@@ -1,0 +1,8 @@
+Updated task 040’s documentation and queue metadata now that the work is verified. `work/tasks/040_add_new_property_task.md` has the acceptance criteria checked, and `work/queue.json` has a fresh `updated_at` timestamp while keeping task 040 as done.
+
+Tests:
+- `pytest -q tests/test_tasks.py` (3 passed)
+
+If you want quick end‑to‑end confirmation, you could run:
+1) `python scripts/train.py --config configs/fp/train_quick.yaml task=lj_sigma`
+2) `python scripts/train.py --config configs/gnn/train_quick.yaml task=lj_sigma`

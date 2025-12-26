@@ -1,0 +1,10 @@
+task:
+  name: "lj_epsilon"
+  type: "regression"
+  target_columns:
+    - "lj_epsilon_over_k_K"
+  metrics: "regression"
+  target_col: "lj_epsilon_over_k_K"
+
+data:
+  target_col: "lj_epsilon_over_k_K"

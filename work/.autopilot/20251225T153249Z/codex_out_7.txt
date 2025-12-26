@@ -1,0 +1,416 @@
+**Status**
+- Skills used: S90_artifacts_versioning → S95_tests_ci (artifact contract + contract tests).
+- `work/tasks/020_artifact_contract_impl.md` still marks this task as blocked (run dir standardization unresolved); per the source-of-truth rule I did not implement changes.
+- Read-only sandbox prevents file edits, including `work/queue.json`.
+- `work/queue.json` shows 010/015 as done, but the task file still says blocked; please reconcile before I proceed.
+
+**変更計画（ファイル単位）**
+- `src/utils/artifacts.py`: add hash/meta helpers, train/predict finalizers, and contract validators.
+- `scripts/train.py`: call `finalize_train_run` after backend run to emit `model/model.ckpt`, `metrics.json`, and update `meta.json`.
+- `scripts/predict.py`: call `finalize_predict_run` to emit `predictions.csv` and update `meta.json` with `model_version`, `dataset_hash`.
+- `tests/contract/test_artifact_contract.py`: add contract tests for meta keys and predictions columns.
+
+**実装（提案差分・未適用）**
+```diff
+diff --git a/src/utils/artifacts.py b/src/utils/artifacts.py
+new file mode 100644
+index 0000000..1111111
+--- /dev/null
++++ b/src/utils/artifacts.py
+@@
++from __future__ import annotations
++
++import csv
++import hashlib
++import json
++import shutil
++from pathlib import Path
++from typing import Any, Dict, Iterable, List, Optional
++from uuid import uuid4
++
++from src.common.config import load_config
++from src.common.meta import utc_now_iso
++from src.common.utils import ensure_dir, load_json, save_json
++
++REQUIRED_META_KEYS = [
++    "run_id",
++    "process_name",
++    "created_at",
++    "git_sha",
++    "dataset_hash",
++    "config_hash",
++    "task_name",
++    "model_name",
++    "featureset_name",
++    "upstream_artifacts",
++    "tags",
++]
++REQUIRED_PRED_COLUMNS = ["sample_id", "y_pred"]
++
++
++def _stable_dumps(obj: Any) -> str:
++    return json.dumps(obj, sort_keys=True, separators=(",", ":"), default=str)
++
++
++def hash_config(cfg: Dict[str, Any]) -> str:
++    return hashlib.sha256(_stable_dumps(cfg).encode("utf-8")).hexdigest()[:12]
++
++
++def _update_hash_from_file(h: "hashlib._Hash", path: Path) -> None:
++    with path.open("rb") as f:
++        for chunk in iter(lambda: f.read(1024 * 1024), b""):
++            h.update(chunk)
++
++
++def compute_dataset_hash(dataset_csv: Path, indices_dir: Optional[Path] = None) -> str:
++    h = hashlib.sha256()
++    _update_hash_from_file(h, dataset_csv)
++    if indices_dir:
++        for name in ("train.txt", "val.txt", "test.txt"):
++            p = indices_dir / name
++            if p.exists():
++                _update_hash_from_file(h, p)
++    return h.hexdigest()[:12]
++
++
++def resolve_git_sha(repo_root: Optional[Path] = None) -> Optional[str]:
++    root = repo_root or Path(__file__).resolve().parents[2]
++    git_dir = root / ".git"
++    if git_dir.is_file():
++        try:
++            text = git_dir.read_text(encoding="utf-8").strip()
++            if text.startswith("gitdir:"):
++                git_dir = root / text.split(":", 1)[1].strip()
++        except Exception:
++            return None
++    head = git_dir / "HEAD"
++    if not head.exists():
++        return None
++    head_val = head.read_text(encoding="utf-8").strip()
++    if head_val.startswith("ref:"):
++        ref = head_val.split(" ", 1)[1].strip()
++        ref_path = git_dir / ref
++        if ref_path.exists():
++            return ref_path.read_text(encoding="utf-8").strip()
++        return None
++    return head_val or None
++
++
++def infer_featureset_name(cfg: Dict[str, Any]) -> str:
++    feat_cfg = cfg.get("featurizer", {})
++    if "fingerprint" in feat_cfg:
++        return f"fp_{feat_cfg.get('fingerprint', 'morgan')}"
++    if "node_features" in feat_cfg or "edge_features" in feat_cfg:
++        return "gnn_graph"
++    return "unknown"
++
++
++def update_meta(
++    run_dir: Path,
++    cfg: Dict[str, Any],
++    process_name: str,
++    dataset_hash: Optional[str],
++    upstream_artifacts: Optional[Iterable[str]] = None,
++    model_name: Optional[str] = None,
++    featureset_name: Optional[str] = None,
++    extra: Optional[Dict[str, Any]] = None,
++    git_sha: Optional[str] = None,
++) -> Dict[str, Any]:
++    run_dir = Path(run_dir)
++    meta_path = run_dir / "meta.json"
++    meta: Dict[str, Any] = load_json(meta_path) if meta_path.exists() else {}
++    meta.setdefault("run_id", uuid4().hex)
++    meta.setdefault("process_name", process_name)
++    meta.setdefault("created_at", utc_now_iso())
++    meta["git_sha"] = git_sha or meta.get("git_sha")
++    meta["dataset_hash"] = dataset_hash if dataset_hash is not None else meta.get("dataset_hash")
++    meta["config_hash"] = hash_config(cfg)
++    meta["task_name"] = cfg.get("task", {}).get("name") or meta.get("task_name")
++    meta["model_name"] = model_name or cfg.get("model", {}).get("name") or meta.get("model_name")
++    meta["featureset_name"] = (
++        featureset_name
++        or cfg.get("featureset_name")
++        or meta.get("featureset_name")
++        or infer_featureset_name(cfg)
++    )
++    if upstream_artifacts is not None:
++        meta["upstream_artifacts"] = list(upstream_artifacts)
++    else:
++        meta.setdefault("upstream_artifacts", [])
++    tags = cfg.get("tags", None)
++    if tags is not None:
++        meta["tags"] = list(tags)
++    else:
++        meta.setdefault("tags", [])
++    if extra:
++        meta.update(extra)
++    for key in REQUIRED_META_KEYS:
++        meta.setdefault(key, None if key not in {"upstream_artifacts", "tags"} else [])
++    save_json(meta_path, meta)
++    return meta
++
++
++def ensure_metrics_json(run_dir: Path) -> Optional[Path]:
++    run_dir = Path(run_dir)
++    metrics_path = run_dir / "metrics.json"
++    if metrics_path.exists():
++        return metrics_path
++    metrics: Dict[str, Any] = {}
++    for name in ("metrics_train.json", "metrics_val.json", "metrics_test.json"):
++        path = run_dir / name
++        if path.exists():
++            key = name.replace("metrics_", "").replace(".json", "")
++            metrics[key] = load_json(path)
++    if metrics:
++        save_json(metrics_path, metrics)
++        return metrics_path
++    return None
++
++
++def ensure_model_ckpt(run_dir: Path, backend: str) -> Optional[Path]:
++    run_dir = Path(run_dir)
++    model_dir = ensure_dir(run_dir / "model")
++    dst = model_dir / "model.ckpt"
++    if dst.exists():
++        return dst
++    backend = backend.lower()
++    if backend == "fp":
++        src = run_dir / "artifacts" / "model.pkl"
++    elif backend == "gnn":
++        src = run_dir / "artifacts" / "model_best.pt"
++    else:
++        return None
++    if src.exists():
++        shutil.copy2(src, dst)
++        return dst
++    return None
++
++
++def validate_meta_contract(meta: Dict[str, Any]) -> None:
++    missing = [k for k in REQUIRED_META_KEYS if k not in meta]
++    if missing:
++        raise AssertionError(f"meta.json missing keys: {', '.join(missing)}")
++
++
++def validate_predictions_csv(path: Path) -> None:
++    with Path(path).open("r", encoding="utf-8") as f:
++        reader = csv.reader(f)
++        header = next(reader, [])
++    missing = [c for c in REQUIRED_PRED_COLUMNS if c not in header]
++    if missing:
++        raise AssertionError(f"predictions.csv missing columns: {', '.join(missing)}")
++
++
++def _collect_prediction_rows(
++    out_dir: Path,
++    model_name: Optional[str],
++    model_version: Optional[str],
++    dataset_hash: Optional[str],
++    run_id: str,
++) -> List[Dict[str, Any]]:
++    rows: List[Dict[str, Any]] = []
++    for path in sorted(Path(out_dir).glob("prediction_*.json")):
++        data = load_json(path)
++        sample_id = data.get("sample_id") or data.get("cas")
++        y_pred = data.get("y_pred") or data.get("prediction")
++        if sample_id is None or y_pred is None:
++            continue
++        row = {
++            "sample_id": sample_id,
++            "y_pred": y_pred,
++            "model_name": model_name,
++            "model_version": model_version,
++            "dataset_hash": dataset_hash,
++            "run_id": run_id,
++        }
++        if "y_true" in data:
++            row["y_true"] = data["y_true"]
++        rows.append(row)
++    return rows
++
++
++def write_predictions_csv(out_dir: Path, rows: Iterable[Dict[str, Any]]) -> Path:
++    out_dir = Path(out_dir)
++    path = out_dir / "predictions.csv"
++    rows = list(rows)
++    fieldnames = ["sample_id", "y_pred", "y_true", "model_name", "model_version", "dataset_hash", "run_id"]
++    with path.open("w", encoding="utf-8", newline="") as f:
++        writer = csv.DictWriter(f, fieldnames=fieldnames)
++        writer.writeheader()
++        for row in rows:
++            writer.writerow(row)
++    return path
++
++
++def _resolve_model_meta(model_artifact_dir: Path) -> Dict[str, Any]:
++    meta_path = Path(model_artifact_dir) / "meta.json"
++    if meta_path.exists():
++        return load_json(meta_path)
++    return {}
++
++
++def _resolve_train_cfg(model_artifact_dir: Path) -> Dict[str, Any]:
++    cfg_path = Path(model_artifact_dir) / "config_snapshot.yaml"
++    if cfg_path.exists():
++        return load_config(cfg_path)
++    return {}
++
++
++def _resolve_dataset_hash_from_model_dir(model_artifact_dir: Path) -> Optional[str]:
++    meta = _resolve_model_meta(model_artifact_dir)
++    if meta.get("dataset_hash"):
++        return meta.get("dataset_hash")
++    train_cfg = _resolve_train_cfg(model_artifact_dir)
++    data_cfg = train_cfg.get("data", {})
++    dataset_csv = data_cfg.get("dataset_csv", None)
++    if not dataset_csv:
++        return None
++    indices_dir = data_cfg.get("indices_dir", None)
++    dataset_csv = Path(dataset_csv)
++    indices_dir = Path(indices_dir) if indices_dir else None
++    if dataset_csv.exists():
++        return compute_dataset_hash(dataset_csv, indices_dir)
++    return None
++
++
++def finalize_train_run(run_dir: Path, cfg: Dict[str, Any], backend: str) -> None:
++    data_cfg = cfg.get("data", {})
++    dataset_csv = Path(data_cfg.get("dataset_csv", ""))
++    indices_dir = Path(data_cfg.get("indices_dir", "")) if data_cfg.get("indices_dir") else None
++    dataset_hash = compute_dataset_hash(dataset_csv, indices_dir) if dataset_csv.exists() else None
++    process_name = str(cfg.get("process", {}).get("name", "train"))
++    update_meta(
++        run_dir,
++        cfg,
++        process_name=process_name,
++        dataset_hash=dataset_hash,
++        git_sha=resolve_git_sha(),
++    )
++    ensure_metrics_json(run_dir)
++    ensure_model_ckpt(run_dir, backend)
++
++
++def finalize_predict_run(out_dir: Path, cfg: Dict[str, Any], model_artifact_dir: Path) -> None:
++    model_artifact_dir = Path(model_artifact_dir)
++    model_meta = _resolve_model_meta(model_artifact_dir)
++    train_cfg = _resolve_train_cfg(model_artifact_dir)
++    dataset_hash = _resolve_dataset_hash_from_model_dir(model_artifact_dir)
++    model_name = model_meta.get("model_name") or train_cfg.get("model", {}).get("name")
++    model_version = model_meta.get("model_version") or model_meta.get("run_id") or train_cfg.get("experiment", {}).get("name")
++    task_name = model_meta.get("task_name") or train_cfg.get("task", {}).get("name")
++    featureset_name = model_meta.get("featureset_name") or infer_featureset_name(train_cfg)
++
++    meta = update_meta(
++        out_dir,
++        cfg,
++        process_name=str(cfg.get("process", {}).get("name", "predict")),
++        dataset_hash=dataset_hash,
++        upstream_artifacts=[str(model_artifact_dir)],
++        model_name=model_name,
++        featureset_name=featureset_name,
++        extra={"model_version": model_version, "task_name": task_name},
++        git_sha=resolve_git_sha(),
++    )
++    rows = _collect_prediction_rows(
++        out_dir,
++        model_name=model_name,
++        model_version=model_version,
++        dataset_hash=dataset_hash,
++        run_id=str(meta.get("run_id")),
++    )
++    write_predictions_csv(out_dir, rows)
+```
+
+```diff
+diff --git a/scripts/train.py b/scripts/train.py
+index 3d3e017..8c3f3b1 100644
+--- a/scripts/train.py
++++ b/scripts/train.py
+@@
+ from src.common.config import load_config
+ from src.fp import train as fp_train
+ from src.gnn import train as gnn_train
++from src.utils.artifacts import finalize_train_run
+@@
+-    if backend == "fp":
+-        fp_train.run(cfg)
+-    elif backend == "gnn":
+-        gnn_train.run(cfg)
++    if backend == "fp":
++        run_dir = fp_train.run(cfg)
++    elif backend == "gnn":
++        run_dir = gnn_train.run(cfg)
+     else:
+         raise ValueError(f"Unknown backend: {backend}")
++    finalize_train_run(run_dir, cfg, backend)
+```
+
+```diff
+diff --git a/scripts/predict.py b/scripts/predict.py
+index 6d6f9a2..d3f0f0a 100644
+--- a/scripts/predict.py
++++ b/scripts/predict.py
+@@
+ from src.common.config import load_config
+ from src.fp import predict as fp_predict
+ from src.gnn import predict as gnn_predict
++from src.utils.artifacts import finalize_predict_run
+@@
+-    if backend == "fp":
+-        fp_predict.run(cfg, args.query)
+-    elif backend == "gnn":
+-        gnn_predict.run(cfg, args.query)
++    if backend == "fp":
++        out_dir = fp_predict.run(cfg, args.query)
++    elif backend == "gnn":
++        out_dir = gnn_predict.run(cfg, args.query)
+     else:
+         raise ValueError(f"Unknown backend: {backend}")
++    finalize_predict_run(out_dir, cfg, model_artifact_dir)
+```
+
+```diff
+diff --git a/tests/contract/test_artifact_contract.py b/tests/contract/test_artifact_contract.py
+new file mode 100644
+index 0000000..2222222
+--- /dev/null
++++ b/tests/contract/test_artifact_contract.py
+@@
++from __future__ import annotations
++
++from src.common.utils import save_json
++from src.utils.artifacts import REQUIRED_META_KEYS, validate_meta_contract, validate_predictions_csv
++
++
++def test_meta_contract_required_keys(tmp_path) -> None:
++    meta = {k: "x" for k in REQUIRED_META_KEYS}
++    meta["upstream_artifacts"] = []
++    meta["tags"] = []
++    save_json(tmp_path / "meta.json", meta)
++    validate_meta_contract(meta)
++
++
++def test_predictions_csv_contract(tmp_path) -> None:
++    path = tmp_path / "predictions.csv"
++    path.write_text("sample_id,y_pred\nA,0.1\n", encoding="utf-8")
++    validate_predictions_csv(path)
+```
+
+**追加/更新したテスト**
+- `tests/contract/test_artifact_contract.py`（新規・提案）
+
+**検証コマンド**
+- `pytest tests/contract/test_artifact_contract.py`
+- `python scripts/train.py --config configs/fp/train_fixture.yaml`
+- `python scripts/predict.py --config configs/fp/predict_fixture.yaml --query 71-43-2`
+
+**互換性影響**
+- Artifact: `model/model.ckpt`, `metrics.json`, `predictions.csv`, and enriched `meta.json` are added; existing `artifacts/` files remain to avoid breaking current loaders.
+- If you want to deprecate `artifacts/model.pkl` or `artifacts/model_best.pt`, we should add an ADR and update predict/evaluate loaders accordingly.
+
+**work/queue.json 更新**
+- Read-onlyのため更新できません。`work/queue.json` のタスク020を `blocked` に更新し、理由を task file と一致させてください（または task file を更新して unblock してください）。
+
+次に進めるなら、どれにしますか？
+1) `work/tasks/020_artifact_contract_impl.md` の blocked 記述を更新して unblocked にする  
+2) 最終的な出力ディレクトリ規約（run dir）を共有する

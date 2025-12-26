@@ -1,0 +1,29 @@
+Using S90_artifacts_versioning and S95_tests_ci because this task is the artifact contract implementation plus contract tests.
+
+**Status**
+- `work/tasks/020_artifact_contract_impl.md` marks this task as blocked; per contract, I’m not proceeding with code changes yet.
+- Note: `work/queue.json` shows 010/015 as done, but the task file still says blocked; please reconcile or confirm override.
+
+**変更計画（ファイル単位）**
+- `src/utils/artifacts.py` を新規追加し、artifact 保存共通関数を実装
+- `scripts/train.py` と `scripts/predict.py` に保存呼び出しを追加
+- `tests/contract/` に artifact 契約テストを追加
+
+**実装（差分）**
+- なし（タスクが blocked のため未着手）
+
+**追加/更新したテスト**
+- なし
+
+**検証コマンド**
+- なし（未実装）
+
+**互換性影響（config/CLI/artifact）**
+- なし（未変更）
+
+**work/queue.json**
+- 本来は task 020 を `blocked` に更新し理由を記録すべきですが、read-only のため更新できません。
+
+次の対応をお願いします:
+1) `work/tasks/020_artifact_contract_impl.md` の Blocked を解除（または続行指示）  
+2) 続行OKなら、このまま実装に入ります

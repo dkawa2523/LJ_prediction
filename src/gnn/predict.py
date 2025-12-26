@@ -5,17 +5,19 @@ import pickle
 from pathlib import Path
 from typing import Any, Dict, Tuple
 
-import numpy as np
 import pandas as pd
 
 from src.common.ad import applicability_domain
 from src.common.chemistry import get_elements_from_mol
-from src.common.config import load_yaml
+from src.common.config import dump_yaml, load_config
+from src.common.feature_pipeline import GraphFeaturePipeline, load_feature_pipeline
+from src.common.meta import build_meta, save_meta
 from src.common.io import load_sdf_mol, read_csv, sdf_path_from_cas
 from src.common.utils import ensure_dir, get_logger, save_json
 from src.fp.featurizer_fp import morgan_bitvect
-from src.gnn.featurizer_graph import featurize_mol_to_pyg
-from src.gnn.models import GCNRegressor, MPNNRegressor
+from src.gnn.models import GCNRegressor, GINRegressor, MPNNRegressor
+from src.utils.artifacts import compute_dataset_hash, load_meta, resolve_training_context
+from src.utils.validate_config import validate_config
 
 try:
     import torch
@@ -41,44 +43,64 @@ def _resolve_cas(mode: str, query: str, dataset_csv: Path) -> Tuple[str, Dict[st
     raise ValueError(f"Unknown input mode: {mode}. Use 'cas' or 'formula'.")
 
 
-def main() -> None:
-    ap = argparse.ArgumentParser(description="Predict LJ parameter using GNN model with applicability-domain diagnostics.")
-    ap.add_argument("--config", required=True, help="Path to configs/gnn/predict.yaml")
-    ap.add_argument("--query", required=True, help="CAS or formula depending on config.input.mode")
-    args = ap.parse_args()
-
+def run(cfg: Dict[str, Any], query: str) -> Path:
     if torch is None:
         raise ImportError("PyTorch is required.")
-    cfg = load_yaml(args.config)
+    validate_config(cfg)
     model_artifact_dir = Path(cfg["model_artifact_dir"])
     artifacts_dir = model_artifact_dir / "artifacts"
     if not artifacts_dir.exists():
         raise FileNotFoundError(f"Artifacts dir not found: {artifacts_dir}")
 
     train_cfg_path = model_artifact_dir / "config_snapshot.yaml"
-    train_cfg = load_yaml(train_cfg_path)
+    train_cfg = load_config(train_cfg_path)
 
     data_cfg = train_cfg.get("data", {})
     sdf_dir = Path(data_cfg.get("sdf_dir", "data/raw/sdf_files"))
-    dataset_csv = Path(cfg.get("dataset_csv", data_cfg.get("dataset_csv", "data/processed/dataset_with_lj.csv")))
+    data_override = cfg.get("data", {})
+    dataset_csv = Path(
+        cfg.get(
+            "dataset_csv",
+            data_override.get("dataset_csv", data_cfg.get("dataset_csv", "data/processed/dataset_with_lj.csv")),
+        )
+    )
     cas_col = str(data_cfg.get("cas_col", "CAS"))
 
-    out_dir = ensure_dir(Path(cfg.get("output", {}).get("out_dir", "runs/predict")) / cfg.get("output", {}).get("exp_name", "gnn_predict"))
+    output_cfg = cfg.get("output", {})
+    experiment_cfg = cfg.get("experiment", {})
+    exp_name = str(output_cfg.get("exp_name", experiment_cfg.get("name", "gnn_predict")))
+    out_dir = ensure_dir(Path(output_cfg.get("out_dir", "runs/predict")) / exp_name)
     logger = get_logger("gnn_predict", log_file=out_dir / "predict.log")
+    dump_yaml(out_dir / "config.yaml", cfg)
+    train_meta = load_meta(model_artifact_dir)
+    train_context = resolve_training_context(train_cfg, train_meta, model_artifact_dir)
+    dataset_hash = train_context.get("dataset_hash") or compute_dataset_hash(dataset_csv, None)
+    run_meta = build_meta(
+        process_name=str(cfg.get("process", {}).get("name", "predict")),
+        cfg=cfg,
+        upstream_artifacts=[str(model_artifact_dir)],
+        dataset_hash=dataset_hash,
+        model_version=train_context.get("model_version"),
+        extra={
+            "task_name": train_context.get("task_name"),
+            "model_name": train_context.get("model_name"),
+            "featureset_name": train_context.get("featureset_name"),
+        },
+    )
+    save_meta(out_dir, run_meta)
 
     mode = str(cfg.get("input", {}).get("mode", "formula"))
-    cas, resolve_meta = _resolve_cas(mode=mode, query=args.query, dataset_csv=dataset_csv)
-    logger.info(f"Resolved CAS={cas} from query={args.query} (mode={mode})")
+    cas, resolve_meta = _resolve_cas(mode=mode, query=query, dataset_csv=dataset_csv)
+    logger.info(f"Resolved CAS={cas} from query={query} (mode={mode})")
 
     mol = load_sdf_mol(sdf_path_from_cas(sdf_dir, cas))
     if mol is None:
         raise FileNotFoundError(f"SDF not found or invalid for CAS={cas} in {sdf_dir}")
 
-    # Load featurizer config
-    with open(artifacts_dir / "graph_featurizer.pkl", "rb") as f:
-        gcfg = pickle.load(f)
-
-    data = featurize_mol_to_pyg(mol, y=None, cfg=gcfg)
+    pipeline = load_feature_pipeline(artifacts_dir)
+    if not isinstance(pipeline, GraphFeaturePipeline):
+        pipeline = GraphFeaturePipeline.from_artifacts(artifacts_dir)
+    data = pipeline.featurize_mol(mol, y=None)
 
     model_cfg = train_cfg.get("model", {})
     model_name = str(model_cfg.get("name", "mpnn")).lower()
@@ -93,6 +115,15 @@ def main() -> None:
 
     if model_name == "gcn":
         model = GCNRegressor(in_dim=in_dim, hidden_dim=hidden_dim, num_layers=num_layers, dropout=dropout, global_dim=global_dim)
+    elif model_name == "gin":
+        model = GINRegressor(
+            in_dim=in_dim,
+            hidden_dim=hidden_dim,
+            num_layers=num_layers,
+            dropout=dropout,
+            global_dim=global_dim,
+            edge_dim=edge_dim,
+        )
     elif model_name == "mpnn":
         model = MPNNRegressor(
             in_dim=in_dim,
@@ -121,6 +152,21 @@ def main() -> None:
     model.eval()
     with torch.no_grad():
         pred = float(model(data.to(device)).detach().cpu().numpy().reshape(-1)[0])
+    pred_df = pd.DataFrame(
+        [
+            {
+                "sample_id": cas,
+                "y_pred": pred,
+                "model_name": train_context.get("model_name"),
+                "model_version": train_context.get("model_version"),
+                "dataset_hash": dataset_hash,
+                "run_id": run_meta["run_id"],
+            }
+        ]
+    )
+    pred_path = out_dir / "predictions.csv"
+    pred_df.to_csv(pred_path, index=False)
+    logger.info(f"Saved predictions to {pred_path}")
 
     # AD
     ad_res = None
@@ -142,7 +188,7 @@ def main() -> None:
 
     print("=" * 70)
     print("LJ parameter prediction (GNN model)")
-    print(f"Query: {args.query} (resolved CAS: {cas})")
+    print(f"Query: {query} (resolved CAS: {cas})")
     print(f"Predicted target: {pred:.6g}")
     if ad_res is not None:
         if ad_res.max_tanimoto is not None:
@@ -162,13 +208,24 @@ def main() -> None:
 
     result = {
         "cas": cas,
-        "query": args.query,
+        "query": query,
         "prediction": pred,
         "resolve_meta": resolve_meta,
         "ad": None if ad_res is None else ad_res.to_dict(),
     }
     save_json(out_dir / f"prediction_{cas}.json", result)
     logger.info(f"Saved prediction json to {out_dir / f'prediction_{cas}.json'}")
+    return out_dir
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(description="Predict LJ parameter using GNN model with applicability-domain diagnostics.")
+    ap.add_argument("--config", required=True, help="Path to configs/gnn/predict.yaml")
+    ap.add_argument("--query", required=True, help="CAS or formula depending on config.input.mode")
+    args = ap.parse_args()
+
+    cfg = load_config(args.config)
+    run(cfg, args.query)
 
 
 if __name__ == "__main__":

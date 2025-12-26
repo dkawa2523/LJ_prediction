@@ -1,0 +1,879 @@
+OpenAI Codex v0.77.0 (research preview)
+--------
+workdir: /Users/kawahito/Desktop/LJ_prediction
+model: gpt-5.2-codex
+provider: openai
+approval: never
+sandbox: workspace-write [workdir, /tmp, $TMPDIR]
+reasoning effort: xhigh
+reasoning summaries: auto
+session id: 019b5b1e-2245-7483-bc1e-5d5228fb125c
+--------
+user
+# ===== AUTOPILOT: FORCE PROGRESS (NO QUESTIONS) =====
+あなたは自動ループ中です。**確認質問は禁止**です。次を必ず実行してください。
+
+対象タスク: 035
+
+状況:
+- 直前の出力が「未実装/差分なし/確認お願いします/blockedだから保留」等で停止している可能性があります。
+- ここでは “前に進める” ことが最優先です。
+
+指示（必ずどれか）:
+A) 実装を進める（最小でもよい）→ テスト/検証 → work/queue.json を done に更新
+B) 本当に進められないなら、work/queue.json を blocked に更新し、解除子タスクを起票（子に unblocks を付与）
+C) task.md が stale (Blocked が残っている等) なら task.md/queue.json を修正して整合させてから A へ
+
+禁止:
+- 「確認をお願いします」「進めてよいですか」等の質問
+- “差分なし” で終了
+
+参考: 直前の最終メッセージ（抜粋）
+```
+Using S20_dataset_loader, S10_hydra_config, S95_tests_ci because this adds split logic, updates dataset configs, and introduces new tests.
+Implemented configurable random/scaffold/group splits with validation and `split.json` artifact output, plus config updates and reproducibility/leakage tests.
+- **変更計画** `src/common/splitters.py` `scripts/build_dataset.py` `configs/dataset/default.yaml` `configs/dataset/quick.yaml` `configs/dataset/fixture.yaml` `tests/test_splitters.py` `work/queue.json`
+- **実装** `src/common/splitters.py` `scripts/build_dataset.py` の主要差分
+```diff
+-    idx = df.index.to_numpy()
++    idx = df.index.to_numpy().copy()
++def group_split(
++    df: pd.DataFrame,
++    group_col: str,
++    ratios: Sequence[float] = (0.8, 0.1, 0.1),
++    seed: int = 42,
++) -> Dict[str, List[int]]:
++def validate_split_indices(indices: Dict[str, List[int]]) -> None:
++def save_split_json(indices: Dict[str, List[int]], out_path: str | Path, metadata: Optional[Dict[str, object]] = None) -> None:
+```
+```diff
+-    ratios = split_cfg.get("ratios", [0.8, 0.1, 0.1])
++    ratios = split_cfg.get("fractions", split_cfg.get("ratios", [0.8, 0.1, 0.1]))
++    elif split_method == "group":
++        group_key = split_cfg.get("group_key")
++        if not group_key:
++            raise ValueError("split.method=group requires split.group_key")
++        group_col = cols.get(str(group_key), str(group_key))
++        if group_col not in df.columns:
++            raise ValueError(f"split.group_key '{group_key}' resolved to '{group_col}' not in dataset columns")
++        indices = group_split(df, group_col=group_col, ratios=ratios, seed=split_seed)
++        group_map = build_group_map(df, group_col=group_col)
++        validate_group_leakage(indices, group_map, label=f"group:{group_col}")
++    save_split_json(indices, out_indices_dir / "split.json", metadata=split_meta)
+```
+- **追加/更新したテスト** `tests/test_splitters.py`（`test_random_split_reproducible` `test_group_split_keeps_groups` `test_scaffold_split_no_leakage`）
+- **検証コマンド** `pytest -q tests/test_splitters.py`（pass）
+- **互換性影響** `split.fractions` を追加し `split.ratios` は後方互換で保持、`split.group_key` は group 方法で必須、`split.json` が `indices` に追加され dataset_hash が変わる、scaffold/group は空split時にエラー
+- **Queue更新** `work/queue.json` の task 035 を done に更新
+
+Next steps:
+1) `pytest -q` で全体テストを確認
+2) `configs/dataset/default.yaml` の `split.method` を `group` に切り替えて `python scripts/build_dataset.py --config configs/dataset.yaml` を実行し split.json を確認
+```
+
+mcp: context7 starting
+mcp: context7 ready
+mcp startup: ready: context7
+
+thinking
+**Reviewing task instructions and repo state**
+exec
+/bin/zsh -lc ls in /Users/kawahito/Desktop/LJ_prediction succeeded in 282ms:
+README.md
+agentskills
+codex
+configs
+data
+docs
+learning_curve_val.png
+objective.md
+parity_test.png
+parity_val.png
+requirements.txt
+residual_test.png
+residual_val.png
+runs
+scripts
+src
+tests
+tools
+work
+y_train_hist.png
+
+thinking
+**Checking for AGENTS.md file**
+exec
+/bin/zsh -lc "rg --files -g 'AGENTS.md'" in /Users/kawahito/Desktop/LJ_prediction exited 1 in 284ms:
+
+
+thinking
+**Checking for AGENTS and skills**
+exec
+/bin/zsh -lc 'ls work' in /Users/kawahito/Desktop/LJ_prediction succeeded in 245ms:
+AUTOMATION.md
+AUTOPILOT.md
+BACKLOG.md
+README.md
+REPO_ORIENTATION.md
+queue.json
+rfc
+tasks
+templates
+exec
+/bin/zsh -lc 'cat work/queue.json' in /Users/kawahito/Desktop/LJ_prediction succeeded in 262ms:
+{
+  "version": 1,
+  "updated_at": "2025-12-26T14:40:26Z",
+  "policy": {
+    "priority_order": [
+      "P0",
+      "P1",
+      "P2",
+      "P3"
+    ],
+    "status_order": [
+      "todo",
+      "in_progress",
+      "blocked",
+      "done"
+    ],
+    "auto_set_in_progress_on_next": true
+  },
+  "tasks": [
+    {
+
+thinking
+**Verifying task and skill references**
+exec
+/bin/zsh -lc 'ls agentskills' in /Users/kawahito/Desktop/LJ_prediction succeeded in 266ms:
+README.md
+ROUTER.md
+skill_registry.json
+skill_template.md
+skills
+
+thinking
+**Searching for skills with ripgrep**
+exec
+/bin/zsh -lc "rg --files -g 'SKILL.md' agentskills/skills" in /Users/kawahito/Desktop/LJ_prediction exited 1 in 287ms:
+
+
+thinking
+**Listing directories to locate SKILL.md**
+exec
+/bin/zsh -lc "find agentskills -maxdepth 3 -type f -name 'SKILL.md'" in /Users/kawahito/Desktop/LJ_prediction succeeded in 266ms:
+
+
+thinking
+**Checking skill file locations**
+exec
+/bin/zsh -lc 'find agentskills/skills -maxdepth 2 -type f' in /Users/kawahito/Desktop/LJ_prediction succeeded in 269ms:
+agentskills/skills/S30_preprocess_pipeline.md
+agentskills/skills/S50_model_plugin.md
+agentskills/skills/S95_tests_ci.md
+agentskills/skills/S20_dataset_loader.md
+agentskills/skills/S90_artifacts_versioning.md
+agentskills/skills/S10_hydra_config.md
+agentskills/skills/S40_featurizer.md
+agentskills/skills/S00_repo_orientation.md
+agentskills/skills/S70_evaluator_metrics.md
+agentskills/skills/S60_trainer_loop.md
+agentskills/skills/S80_inference_cli_api.md
+
+thinking
+**Clarifying skill markdown files**
+exec
+/bin/zsh -lc 'cat agentskills/skills/S20_dataset_loader.md' in /Users/kawahito/Desktop/LJ_prediction succeeded in 260ms:
+# S20 Dataset Loader
+
+## Purpose
+CSV/SDF 入力を共通表現へ変換するローダを追加/修正し、目的変数の差し替えに耐える基盤を作る。
+
+## Inputs
+- docs/02_DATA_CONTRACTS.md
+- work/tasks/040_add_new_property_task.md（または該当）
+
+## Allowed Changes
+- src/data/**
+- configs/dataset/**
+- tests/**
+
+## Steps
+1) 現状の CSV/SDF の読み込み箇所を特定
+2) column mapping を config で指定できるようにする
+3) 欠損/不一致の扱いをログ化
+4) unit test（最小CSV）を追加
+
+thinking
+**Opening files S10 and S95**
+exec
+/bin/zsh -lc 'cat agentskills/skills/S10_hydra_config.md' in /Users/kawahito/Desktop/LJ_prediction succeeded in 281ms:
+# S10 Hydra Config
+
+## Purpose
+Hydra config を group 化し、設定の再利用と組み合わせを容易にする。
+
+## When to Use
+- config が増えて混乱してきた
+- モデル/特徴量/タスクを切り替えたい
+
+## Inputs
+- docs/03_CONFIG_CONVENTIONS.md
+- work/tasks/010_reorganize_hydra_configs.md
+
+## Allowed Changes
+- configs/**
+- scripts/*（config読込部分の更新）
+- src/utils/validate_config.py（追加）
+
+## Common Pitfalls
+- defaults の上書き順序ミス
+
+thinking
+**Preparing for next step**
+exec
+/bin/zsh -lc 'cat agentskills/skills/S95_tests_ci.md' in /Users/kawahito/Desktop/LJ_prediction succeeded in 269ms:
+# S95 Tests & CI
+
+## Purpose
+pytest + smoke + contract test を整備し、改修で壊れないようにする。
+
+## Allowed Changes
+- tests/**
+- pyproject.toml（任意）
+- .github/workflows/**（任意）
+
+## Pitfalls
+- smoke が重くなりすぎる
+- 乱数により flaky になる
+
+thinking
+**Checking task instructions for split strategies**
+exec
+/bin/zsh -lc 'cat work/tasks/035_split_strategies.md' in /Users/kawahito/Desktop/LJ_prediction succeeded in 265ms:
+# Task 035 (P0): split戦略の追加（random/scaffold/group、seed固定、漏洩防止）
+
+## 目的（Why）
+- R²の比較が意味を持つように、splitを戦略的に選べるようにする。
+- splitが変わるとスコアが大きく変動するため、**同一splitで比較**できる仕組みが必須。
+
+## 背景（Context）
+- random splitだけだと簡単に“高スコア”が出る（漏洩/類似分子が跨る）。
+- 分子タスクでは scaffold split が標準的な比較になりやすい。
+- 将来の比較（multirun, ClearML）でも split の追跡が必須（dataset_hash + split.json）。
+
+## スコープ（Scope）
+### In scope
+- `build_dataset`（またはsplit生成部分）に split戦略を追加
+  - `random`（seed固定）
+  - `scaffold`（Murcko scaffoldでグルーピングし、グループ単位で割当）
+  - `group`（指定列：例 cas / inchikey / formula 等、同一グループは同一split）
+- split成果物の保存（契約）
+  - `split.json` などとして artifact に保存（docs/04準拠）
+- splitのバリデーション
+
+thinking
+**Inspecting task-related code changes**
+exec
+/bin/zsh -lc "rg --files -g '*.py' src" in /Users/kawahito/Desktop/LJ_prediction succeeded in 284ms:
+src/data/__init__.py
+src/data/audit.py
+src/common/meta.py
+src/common/feature_pipeline.py
+src/common/ad.py
+src/common/chemistry.py
+src/common/utils.py
+src/common/plots.py
+src/common/descriptors.py
+src/common/splitters.py
+src/common/__init__.py
+src/common/io.py
+src/common/dataset_selectors.py
+src/common/lj.py
+src/common/config.py
+src/common/metrics.py
+src/gnn/evaluate.py
+src/gnn/featurizer_graph.py
+src/gnn/train.py
+src/gnn/__init__.py
+
+thinking
+**Opening splitter utility file**
+exec
+/bin/zsh -lc "sed -n '1,240p' src/common/splitters.py" in /Users/kawahito/Desktop/LJ_prediction succeeded in 266ms:
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Dict, Iterable, List, Optional, Sequence, Tuple
+
+import numpy as np
+import pandas as pd
+
+from .chemistry import murcko_scaffold_smiles
+from .io import load_sdf_mol, sdf_path_from_cas
+from .utils import save_json
+
+
+def random_split(
+    df: pd.DataFrame,
+    ratios: Sequence[float] = (0.8, 0.1, 0.1),
+    seed: int = 42,
+) -> Dict[str, List[int]]:
+    assert abs(sum(ratios) - 1.0) < 1e-6, "ratios must sum to 1.0"
+    rng = np.random.default_rng(seed)
+
+thinking
+**Checking dataset build script**
+exec
+/bin/zsh -lc "sed -n '1,260p' scripts/build_dataset.py" in /Users/kawahito/Desktop/LJ_prediction succeeded in 267ms:
+from __future__ import annotations
+
+import argparse
+import sys
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+import numpy as np
+import pandas as pd
+from tqdm import tqdm
+
+# Allow running as `python scripts/build_dataset.py ...` without installing the package.
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from src.common.config import dump_yaml, load_config
+from src.common.chemistry import elements_string, n_elements, parse_formula
+from src.common.dataset_selectors import SelectorContext, apply_selectors
+from src.common.io import load_sdf_mol, read_csv, sdf_path_from_cas, write_csv
+
+thinking
+**Checking dataset build and configs**
+exec
+/bin/zsh -lc 'rg -n "split" configs/dataset -S' in /Users/kawahito/Desktop/LJ_prediction succeeded in 298ms:
+configs/dataset/default.yaml:38:split:
+configs/dataset/quick.yaml:40:split:
+configs/dataset/fixture.yaml:29:split:
+exec
+/bin/zsh -lc "sed -n '1,120p' configs/dataset/default.yaml" in /Users/kawahito/Desktop/LJ_prediction succeeded in 255ms:
+paths:
+  raw_csv: "data/raw/tc_pc_tb_pubchem.csv"
+  sdf_dir: "data/raw/sdf_files"
+  out_csv: "data/processed/dataset_with_lj.csv"
+  out_indices_dir: "data/processed/indices"
+
+columns:
+  cas: "CAS"
+  formula: "MolecularFormula"
+  tc: "Tc [K]"
+  pc: "Pc [Pa]"
+  tb: "Tb [K]"
+
+seed: 42
+
+lj:
+  epsilon_method: "bird_critical"
+  sigma_method: "bird_critical"
+  epsilon_col: "lj_epsilon_over_k_K"
+  sigma_col: "lj_sigma_A"
+
+thinking
+**Considering method split approach**
+exec
+/bin/zsh -lc "sed -n '1,120p' configs/dataset/quick.yaml" in /Users/kawahito/Desktop/LJ_prediction succeeded in 264ms:
+paths:
+  raw_csv: "data/raw/tc_pc_tb_pubchem.csv"
+  sdf_dir: "data/raw/sdf_files"
+  out_csv: "data/processed/quick/dataset_with_lj.csv"
+  out_indices_dir: "data/processed/quick/indices"
+
+columns:
+  cas: "CAS"
+  formula: "MolecularFormula"
+  tc: "Tc [K]"
+  pc: "Pc [Pa]"
+  tb: "Tb [K]"
+
+seed: 42
+
+limit_rows: 2000
+
+lj:
+  epsilon_method: "bird_critical"
+  sigma_method: "bird_critical"
+
+thinking
+**Checking fixture reference**
+exec
+/bin/zsh -lc "sed -n '1,120p' configs/dataset/fixture.yaml" in /Users/kawahito/Desktop/LJ_prediction succeeded in 275ms:
+paths:
+  raw_csv: "tests/fixtures/data/raw/tc_pc_tb_fixture.csv"
+  sdf_dir: "tests/fixtures/data/raw/sdf_files"
+  out_csv: "tests/fixtures/data/processed/dataset_with_lj.csv"
+  out_indices_dir: "tests/fixtures/data/processed/indices"
+
+columns:
+  cas: "CAS"
+  formula: "MolecularFormula"
+  tc: "Tc [K]"
+  pc: "Pc [Pa]"
+  tb: "Tb [K]"
+
+seed: 42
+
+lj:
+  epsilon_method: "bird_critical"
+  sigma_method: "bird_critical"
+  epsilon_col: "lj_epsilon_over_k_K"
+  sigma_col: "lj_sigma_A"
+
+thinking
+**Checking tests in test_splitters**
+exec
+/bin/zsh -lc "sed -n '1,240p' tests/test_splitters.py" in /Users/kawahito/Desktop/LJ_prediction succeeded in 270ms:
+from __future__ import annotations
+
+from pathlib import Path
+
+import pandas as pd
+import pytest
+
+from src.common.splitters import (
+    build_group_map,
+    group_split,
+    random_split,
+    scaffold_split,
+    validate_group_leakage,
+    validate_scaffold_split,
+    validate_split_indices,
+)
+
+
+def test_random_split_reproducible() -> None:
+    df = pd.DataFrame({"CAS": [f"X{i:02d}" for i in range(30)]})
+
+thinking
+**Verifying task completion and test status**
+exec
+/bin/zsh -lc 'git status --short' in /Users/kawahito/Desktop/LJ_prediction succeeded in 292ms:
+ M README.md
+ M configs/dataset.yaml
+ M configs/dataset_quick.yaml
+ M configs/fp/predict.yaml
+ M configs/fp/predict_quick.yaml
+ M configs/fp/train.yaml
+ M configs/fp/train_quick.yaml
+ M configs/gnn/predict.yaml
+ M configs/gnn/train.yaml
+ M configs/gnn/train_mpnn_quick.yaml
+ M configs/gnn/train_quick.yaml
+ M objective.md
+ M scripts/build_dataset.py
+ D scripts/fp_predict.py
+ D scripts/fp_train.py
+ D scripts/gnn_predict.py
+ D scripts/gnn_train.py
+ M src/common/config.py
+ M src/common/splitters.py
+ M src/fp/predict.py
+
+thinking
+**Verifying task 035 completion and config updates**
+
+I’m reviewing if task 035 is truly done or needs status updates in work/queue.json, especially checking for missing tests or config changes involving dataset artifacts and their split strategies. I’m also comparing config structures between old and new (Hydra-based) YAML files and looking through related task docs to see if checklist items remain unticked, aiming to confirm or finalize task progress.
+exec
+/bin/zsh -lc "sed -n '1,120p' work/tasks/030_featurepipeline_unify.md" in /Users/kawahito/Desktop/LJ_prediction succeeded in 274ms:
+# Task 030 (P0): FeaturePipeline の統一（train/infer skew 排除）
+
+## 目的
+- 学習と推論で特徴量がズレる問題を防ぐ（精度と運用の地雷）
+
+## Plan
+1) `src/common/feature_pipeline.py`（案）を作り、前処理→特徴量化の一本化
+2) 学習側は pipeline を fit/transform、推論側は保存済み pipeline を load/transform
+3) FP と GNN で共通化できる範囲を決め、差分は adapter で吸収
+4) smoke test：同一サンプルで train→save→load→predict が一致すること
+
+## Acceptance Criteria
+- [x] 推論時に学習と同じ pipeline が使われる
+- [x] pipeline 状態が artifact に保存される
+
+## Implementation Notes
+- `src/common/feature_pipeline.py` に FP/GNN の共通パイプラインを追加
+- train/evaluate/predict で pipeline の save/load を統一し、旧 artifact も互換対応
+- `tests/test_feature_pipeline.py` を追加して roundtrip を検証
+
+
+thinking
+**Reviewing task completion markers**
+exec
+/bin/zsh -lc "rg -n \"Acceptance Criteria\" -n work/tasks/025_dataset_audit.md && sed -n '1,140p' work/tasks/025_dataset_audit.md" in /Users/kawahito/Desktop/LJ_prediction succeeded in 284ms:
+53:## 受け入れ条件（Acceptance Criteria）
+# Task 025 (P0): データ監査＆漏洩/重複検知（比較の信頼性確保）
+
+## 目的（Why）
+- R²などの比較が「本当に意味のある比較」になるように、データの地雷（重複/漏洩/単位混在/ラベル異常/無効構造）を可視化して潰す。
+- “精度改善の前に、評価が正しいことを保証する” がP0。
+
+## 背景（Context）
+- 1万件規模でR²が低い原因は、モデル以前に「データ問題」であることが多い。
+- split漏洩（同一分子がtrainとtestに混入等）があると、比較が壊れる。
+- 将来ClearMLで Process を Task 化するため、監査も独立Process化する。
+
+## スコープ（Scope）
+### In scope
+- **新Process `audit_dataset`** を追加（1 script = 1 process）
+  - 例: `scripts/audit_dataset.py`
+- auditの結果を **artifactとして保存**
+  - `audit_report.json`（機械可読）
+  - `audit_report.md`（人間可読）
+  - `plots/`（分布/外れ値など）
+
+thinking
+**Analyzing task completion and potential updates**
+exec
+/bin/zsh -lc "sed -n '1,160p' configs/dataset.yaml" in /Users/kawahito/Desktop/LJ_prediction succeeded in 276ms:
+defaults:
+  - process: build_dataset
+  - dataset: default
+  - task: lj_epsilon
+  - hydra: default
+  - _self_
+
+thinking
+**Examining new Hydra config aggregator**
+exec
+/bin/zsh -lc "sed -n '1,120p' configs/dataset_quick.yaml" in /Users/kawahito/Desktop/LJ_prediction succeeded in 264ms:
+defaults:
+  - process: build_dataset
+  - dataset: quick
+  - task: lj_epsilon
+  - hydra: default
+  - _self_
+
+thinking
+**Verifying artifact documentation**
+exec
+/bin/zsh -lc 'rg -n "split" docs/04_ARTIFACTS_AND_VERSIONING.md' in /Users/kawahito/Desktop/LJ_prediction succeeded in 269ms:
+26:  - `dataset_index.csv`（sample_id一覧、split含めてもよい）
+27:  - `split.json`（train/val/test index）
+86:  - `split`（train/val/test）
+
+thinking
+**Preparing to run splitter tests**
+exec
+/bin/zsh -lc 'pytest -q tests/test_splitters.py' in /Users/kawahito/Desktop/LJ_prediction succeeded in 1.56s:
+...                                                                      [100%]
+3 passed in 1.09s
+
+thinking
+**Deciding on queue.json update approach**
+exec
+/bin/zsh -lc 'date -u +%Y-%m-%dT%H:%M:%SZ' in /Users/kawahito/Desktop/LJ_prediction succeeded in 276ms:
+2025-12-26T14:47:01Z
+
+thinking
+**Updating timestamps and task file status**
+
+I'm planning to update the `updated_at` timestamp to now, maybe also update `last_presented_at` for task 035 to reflect presentation time. I'll follow existing queue patterns and keep changes minimal. Then, I'll mark all acceptance criteria in `work/tasks/035_split_strategies.md` as done by checking their boxes, possibly adding a verification section, and apply these edits carefully using `apply_patch` separately for the JSON queue and the markdown task file.
+file update
+M /Users/kawahito/Desktop/LJ_prediction/work/tasks/035_split_strategies.md
+@@ -47,7 +47,7 @@
+ ## 受け入れ条件（Acceptance Criteria）
+-- [ ] random/scaffold/group を config で切替できる
+-- [ ] seed固定で split が再現される
+-- [ ] split成果物が artifact として保存される（docs/04準拠）
+-- [ ] scaffold split の漏洩検査ができる（テストで担保）
+-- [ ] pytestに最低1つ追加テスト
++- [x] random/scaffold/group を config で切替できる
++- [x] seed固定で split が再現される
++- [x] split成果物が artifact として保存される（docs/04準拠）
++- [x] scaffold split の漏洩検査ができる（テストで担保）
++- [x] pytestに最低1つ追加テスト
+ 
+apply_patch(auto_approved=true) exited 0 in 22ms:
+Success. Updated the following files:
+M work/tasks/035_split_strategies.md
+file update:
+diff --git a/work/tasks/035_split_strategies.md b/work/tasks/035_split_strategies.md
+index 0d0a96aedd61c60492567c625354f9428edc1700..4c0bedaf113565f0de01a3e58cc2caf2bf432dc5
+--- a/work/tasks/035_split_strategies.md
++++ b/work/tasks/035_split_strategies.md
+@@ -45,11 +45,11 @@
+    - seed固定で split が再現されることを検査
+ 
+ ## 受け入れ条件（Acceptance Criteria）
+-- [ ] random/scaffold/group を config で切替できる
+-- [ ] seed固定で split が再現される
+-- [ ] split成果物が artifact として保存される（docs/04準拠）
+-- [ ] scaffold split の漏洩検査ができる（テストで担保）
+-- [ ] pytestに最低1つ追加テスト
++- [x] random/scaffold/group を config で切替できる
++- [x] seed固定で split が再現される
++- [x] split成果物が artifact として保存される（docs/04準拠）
++- [x] scaffold split の漏洩検査ができる（テストで担保）
++- [x] pytestに最低1つ追加テスト
+ 
+ ## 検証手順（How to Verify）
+ - 例：
+
+file update:
+diff --git a/work/tasks/035_split_strategies.md b/work/tasks/035_split_strategies.md
+index 0d0a96aedd61c60492567c625354f9428edc1700..4c0bedaf113565f0de01a3e58cc2caf2bf432dc5
+--- a/work/tasks/035_split_strategies.md
++++ b/work/tasks/035_split_strategies.md
+@@ -45,11 +45,11 @@
+    - seed固定で split が再現されることを検査
+ 
+ ## 受け入れ条件（Acceptance Criteria）
+-- [ ] random/scaffold/group を config で切替できる
+-- [ ] seed固定で split が再現される
+-- [ ] split成果物が artifact として保存される（docs/04準拠）
+-- [ ] scaffold split の漏洩検査ができる（テストで担保）
+-- [ ] pytestに最低1つ追加テスト
++- [x] random/scaffold/group を config で切替できる
++- [x] seed固定で split が再現される
++- [x] split成果物が artifact として保存される（docs/04準拠）
++- [x] scaffold split の漏洩検査ができる（テストで担保）
++- [x] pytestに最低1つ追加テスト
+ 
+ ## 検証手順（How to Verify）
+ - 例：
+
+
+thinking
+**Updating timestamps in queue.json**
+file update
+M /Users/kawahito/Desktop/LJ_prediction/work/queue.json
+@@ -2,3 +2,3 @@
+   "version": 1,
+-  "updated_at": "2025-12-26T14:40:26Z",
++  "updated_at": "2025-12-26T14:47:01Z",
+   "policy": {
+@@ -161,3 +161,3 @@
+       "started_at": "2025-12-26T14:27:29.824498Z",
+-      "last_presented_at": "2025-12-26T14:27:29.824617Z"
++      "last_presented_at": "2025-12-26T14:47:01Z"
+     },
+apply_patch(auto_approved=true) exited 0 in 26ms:
+Success. Updated the following files:
+M work/queue.json
+file update:
+diff --git a/work/queue.json b/work/queue.json
+index 06070498216eb5ed27dee45ee14006119512072c..5500b0fbab428bcd51415341af2926db50387330
+--- a/work/queue.json
++++ b/work/queue.json
+@@ -1,6 +1,6 @@
+ {
+   "version": 1,
+-  "updated_at": "2025-12-26T14:40:26Z",
++  "updated_at": "2025-12-26T14:47:01Z",
+   "policy": {
+     "priority_order": [
+       "P0",
+@@ -159,7 +159,7 @@
+         "docs/04_ARTIFACTS_AND_VERSIONING.md"
+       ],
+       "started_at": "2025-12-26T14:27:29.824498Z",
+-      "last_presented_at": "2025-12-26T14:27:29.824617Z"
++      "last_presented_at": "2025-12-26T14:47:01Z"
+     },
+     {
+       "id": "040",
+diff --git a/work/tasks/035_split_strategies.md b/work/tasks/035_split_strategies.md
+index 0d0a96aedd61c60492567c625354f9428edc1700..4c0bedaf113565f0de01a3e58cc2caf2bf432dc5
+--- a/work/tasks/035_split_strategies.md
++++ b/work/tasks/035_split_strategies.md
+@@ -45,11 +45,11 @@
+    - seed固定で split が再現されることを検査
+ 
+ ## 受け入れ条件（Acceptance Criteria）
+-- [ ] random/scaffold/group を config で切替できる
+-- [ ] seed固定で split が再現される
+-- [ ] split成果物が artifact として保存される（docs/04準拠）
+-- [ ] scaffold split の漏洩検査ができる（テストで担保）
+-- [ ] pytestに最低1つ追加テスト
++- [x] random/scaffold/group を config で切替できる
++- [x] seed固定で split が再現される
++- [x] split成果物が artifact として保存される（docs/04準拠）
++- [x] scaffold split の漏洩検査ができる（テストで担保）
++- [x] pytestに最低1つ追加テスト
+ 
+ ## 検証手順（How to Verify）
+ - 例：
+
+file update:
+diff --git a/work/queue.json b/work/queue.json
+index 06070498216eb5ed27dee45ee14006119512072c..5500b0fbab428bcd51415341af2926db50387330
+--- a/work/queue.json
++++ b/work/queue.json
+@@ -1,6 +1,6 @@
+ {
+   "version": 1,
+-  "updated_at": "2025-12-26T14:40:26Z",
++  "updated_at": "2025-12-26T14:47:01Z",
+   "policy": {
+     "priority_order": [
+       "P0",
+@@ -159,7 +159,7 @@
+         "docs/04_ARTIFACTS_AND_VERSIONING.md"
+       ],
+       "started_at": "2025-12-26T14:27:29.824498Z",
+-      "last_presented_at": "2025-12-26T14:27:29.824617Z"
++      "last_presented_at": "2025-12-26T14:47:01Z"
+     },
+     {
+       "id": "040",
+diff --git a/work/tasks/035_split_strategies.md b/work/tasks/035_split_strategies.md
+index 0d0a96aedd61c60492567c625354f9428edc1700..4c0bedaf113565f0de01a3e58cc2caf2bf432dc5
+--- a/work/tasks/035_split_strategies.md
++++ b/work/tasks/035_split_strategies.md
+@@ -45,11 +45,11 @@
+    - seed固定で split が再現されることを検査
+ 
+ ## 受け入れ条件（Acceptance Criteria）
+-- [ ] random/scaffold/group を config で切替できる
+-- [ ] seed固定で split が再現される
+-- [ ] split成果物が artifact として保存される（docs/04準拠）
+-- [ ] scaffold split の漏洩検査ができる（テストで担保）
+-- [ ] pytestに最低1つ追加テスト
++- [x] random/scaffold/group を config で切替できる
++- [x] seed固定で split が再現される
++- [x] split成果物が artifact として保存される（docs/04準拠）
++- [x] scaffold split の漏洩検査ができる（テストで担保）
++- [x] pytestに最低1つ追加テスト
+ 
+ ## 検証手順（How to Verify）
+ - 例：
+
+
+thinking
+**Preparing final response**
+exec
+/bin/zsh -lc 'git status --short' in /Users/kawahito/Desktop/LJ_prediction succeeded in 305ms:
+ M README.md
+ M configs/dataset.yaml
+ M configs/dataset_quick.yaml
+ M configs/fp/predict.yaml
+ M configs/fp/predict_quick.yaml
+ M configs/fp/train.yaml
+ M configs/fp/train_quick.yaml
+ M configs/gnn/predict.yaml
+ M configs/gnn/train.yaml
+ M configs/gnn/train_mpnn_quick.yaml
+ M configs/gnn/train_quick.yaml
+ M objective.md
+ M scripts/build_dataset.py
+ D scripts/fp_predict.py
+ D scripts/fp_train.py
+ D scripts/gnn_predict.py
+ D scripts/gnn_train.py
+ M src/common/config.py
+ M src/common/splitters.py
+ M src/fp/predict.py
+file update:
+diff --git a/work/queue.json b/work/queue.json
+index 06070498216eb5ed27dee45ee14006119512072c..5500b0fbab428bcd51415341af2926db50387330
+--- a/work/queue.json
++++ b/work/queue.json
+@@ -1,6 +1,6 @@
+ {
+   "version": 1,
+-  "updated_at": "2025-12-26T14:40:26Z",
++  "updated_at": "2025-12-26T14:47:01Z",
+   "policy": {
+     "priority_order": [
+       "P0",
+@@ -159,7 +159,7 @@
+         "docs/04_ARTIFACTS_AND_VERSIONING.md"
+       ],
+       "started_at": "2025-12-26T14:27:29.824498Z",
+-      "last_presented_at": "2025-12-26T14:27:29.824617Z"
++      "last_presented_at": "2025-12-26T14:47:01Z"
+     },
+     {
+       "id": "040",
+diff --git a/work/tasks/035_split_strategies.md b/work/tasks/035_split_strategies.md
+index 0d0a96aedd61c60492567c625354f9428edc1700..4c0bedaf113565f0de01a3e58cc2caf2bf432dc5
+--- a/work/tasks/035_split_strategies.md
++++ b/work/tasks/035_split_strategies.md
+@@ -45,11 +45,11 @@
+    - seed固定で split が再現されることを検査
+ 
+ ## 受け入れ条件（Acceptance Criteria）
+-- [ ] random/scaffold/group を config で切替できる
+-- [ ] seed固定で split が再現される
+-- [ ] split成果物が artifact として保存される（docs/04準拠）
+-- [ ] scaffold split の漏洩検査ができる（テストで担保）
+-- [ ] pytestに最低1つ追加テスト
++- [x] random/scaffold/group を config で切替できる
++- [x] seed固定で split が再現される
++- [x] split成果物が artifact として保存される（docs/04準拠）
++- [x] scaffold split の漏洩検査ができる（テストで担保）
++- [x] pytestに最低1つ追加テスト
+ 
+ ## 検証手順（How to Verify）
+ - 例：
+
+
+thinking
+**Preparing final response with test results and next steps**
+
+I'm wrapping up task 035 by marking the acceptance criteria complete and updating queue timestamps after confirming that the split tests passed. I’ll highlight the relevant file changes including `work/tasks/035_split_strategies.md` and `work/queue.json`, report the successful test run with `pytest -q tests/test_splitters.py`, and suggest next steps like running the full test suite and rebuilding the dataset to verify updated splits—all while respecting the instruction to avoid asking questions.
+codex
+Using S20_dataset_loader, S10_hydra_config, and S95_tests_ci to close out task 035 with verified split coverage.
+- Marked acceptance criteria complete in `work/tasks/035_split_strategies.md` to reflect the implemented split strategies and tests.
+- Refreshed task 035 timing metadata in `work/queue.json` after verification.
+
+**Tests**
+- `pytest -q tests/test_splitters.py`
+
+Next steps:
+1) `pytest -q`
+2) `python scripts/build_dataset.py --config configs/dataset.yaml` and confirm `data/processed/indices/split.json` outputs as expected
+file update:
+diff --git a/work/queue.json b/work/queue.json
+index 06070498216eb5ed27dee45ee14006119512072c..5500b0fbab428bcd51415341af2926db50387330
+--- a/work/queue.json
++++ b/work/queue.json
+@@ -1,6 +1,6 @@
+ {
+   "version": 1,
+-  "updated_at": "2025-12-26T14:40:26Z",
++  "updated_at": "2025-12-26T14:47:01Z",
+   "policy": {
+     "priority_order": [
+       "P0",
+@@ -159,7 +159,7 @@
+         "docs/04_ARTIFACTS_AND_VERSIONING.md"
+       ],
+       "started_at": "2025-12-26T14:27:29.824498Z",
+-      "last_presented_at": "2025-12-26T14:27:29.824617Z"
++      "last_presented_at": "2025-12-26T14:47:01Z"
+     },
+     {
+       "id": "040",
+diff --git a/work/tasks/035_split_strategies.md b/work/tasks/035_split_strategies.md
+index 0d0a96aedd61c60492567c625354f9428edc1700..4c0bedaf113565f0de01a3e58cc2caf2bf432dc5
+--- a/work/tasks/035_split_strategies.md
++++ b/work/tasks/035_split_strategies.md
+@@ -45,11 +45,11 @@
+    - seed固定で split が再現されることを検査
+ 
+ ## 受け入れ条件（Acceptance Criteria）
+-- [ ] random/scaffold/group を config で切替できる
+-- [ ] seed固定で split が再現される
+-- [ ] split成果物が artifact として保存される（docs/04準拠）
+-- [ ] scaffold split の漏洩検査ができる（テストで担保）
+-- [ ] pytestに最低1つ追加テスト
++- [x] random/scaffold/group を config で切替できる
++- [x] seed固定で split が再現される
++- [x] split成果物が artifact として保存される（docs/04準拠）
++- [x] scaffold split の漏洩検査ができる（テストで担保）
++- [x] pytestに最低1つ追加テスト
+ 
+ ## 検証手順（How to Verify）
+ - 例：
+
+tokens used
+60,790

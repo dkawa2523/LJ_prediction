@@ -1,0 +1,25 @@
+Task 020 is blocked per `work/tasks/020_artifact_contract_impl.md`, so I didn’t make code changes.  
+使用スキル: S90_artifacts_versioning → S95_tests_ci（artifact契約とcontract test方針の確認）。  
+`work/queue.json` では 010/015 が done ですが、タスクファイルは blocked のままなので、どちらを正とするか確認が必要です。
+
+**Change Plan**
+- Blocked のため保留（想定変更先: `src/utils/artifacts.py`, `scripts/train.py`, `scripts/predict.py`, `tests/contract/`）
+
+**Implementation**
+- 差分なし（`work/tasks/020_artifact_contract_impl.md` の Blocked に従い実装停止）
+
+**Tests**
+- 追加/更新なし
+
+**Verification**
+- 実行なし
+
+**Compatibility Impact**
+- 影響なし（変更なし）
+
+**Queue Update**
+- `work/queue.json` の task 020 を `blocked` に更新する必要あり（read-only のため変更不可）
+
+次の一歩
+1) run dir 標準化が完了しているなら `work/tasks/020_artifact_contract_impl.md` の Blocked を解除してください  
+2) `work/queue.json` を `blocked`（または継続 `in_progress`）に更新してください

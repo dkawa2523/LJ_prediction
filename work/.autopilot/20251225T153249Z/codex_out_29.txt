@@ -1,0 +1,28 @@
+Using S90_artifacts_versioning and S95_tests_ci because this task is the artifact contract + contract tests.
+
+Task 020 is still marked Blocked in `work/tasks/020_artifact_contract_impl.md`, so I did not implement anything. I also can’t update `work/queue.json` due to read-only sandbox.
+
+**Change Plan (files, after unblock)**
+- `work/tasks/020_artifact_contract_impl.md`: clear/refresh the Blocked section once you confirm it’s unblocked.
+- `src/utils/artifacts.py`: add shared artifact save/load helpers per docs/04.
+- `scripts/train.py`: write `config.yaml`, `meta.json`, `metrics.json`, `model.ckpt` into the run dir.
+- `scripts/predict.py`: write `predictions.csv` and `meta.json` with model_version.
+- `tests/contract/`: add contract tests for required files/keys.
+
+**Implementation**
+- None — blocked.
+
+**Tests**
+- None — blocked.
+
+**Verification Commands**
+- None — blocked.
+
+**Compatibility Impact (config/CLI/artifact)**
+- None — blocked.
+
+**Queue Update**
+- Intended: set task 020 status to `blocked` with the reason from `work/tasks/020_artifact_contract_impl.md`.
+- Not done due to read-only filesystem.
+
+If 010/015 are truly done (queue says they are), do you want me to proceed and treat task 020 as unblocked? If yes, please update `work/tasks/020_artifact_contract_impl.md` (or tell me to) and allow write access so I can update `work/queue.json`.

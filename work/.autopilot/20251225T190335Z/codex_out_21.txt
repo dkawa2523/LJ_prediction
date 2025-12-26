@@ -1,0 +1,25 @@
+S90_artifacts_versioning と S95_tests_ci を使用します（artifact 契約実装と contract test 追加が対象のため）。
+
+`work/tasks/020_artifact_contract_impl.md` に「010/015 未完了で blocked」と明記されているため、実装は進められません。`work/queue.json` では 010/015 が done になっており、整合性が取れていない可能性があります。出力ディレクトリ規約が確定したかの確認が必要です。
+
+**変更計画（ファイル単位）**
+- blocked のため実施不可。解除後の想定: `src/utils/artifacts.py`, `scripts/train.py`, `scripts/predict.py`, `tests/contract/**`
+
+**実装（差分）**
+- 変更なし（blocked）
+
+**追加/更新したテスト**
+- なし（blocked）
+
+**検証コマンド**
+- なし（blocked）
+
+**互換性影響（config/CLI/artifact）**
+- 影響なし（変更未実施）
+
+**タスク状態更新**
+- `work/queue.json` を `blocked` に更新し理由を記載する必要がありますが、現在 read-only のため更新できません。
+
+次に進めるには、どちらにしますか？
+1) 出力ディレクトリ規約が確定済みなら `work/tasks/020_artifact_contract_impl.md` の Blocked を解除して進行指示ください  
+2) `work/queue.json` 更新が必要なら書き込み可能な状態で再実行させてください

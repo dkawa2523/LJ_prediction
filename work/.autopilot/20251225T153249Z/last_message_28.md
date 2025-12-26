@@ -1,0 +1,29 @@
+Using S90_artifacts_versioning and S95_tests_ci because this task is about artifact contracts and contract tests.
+
+Task 020 is blocked per `work/tasks/020_artifact_contract_impl.md`, so I didn’t make code changes. Also, I can’t update `work/queue.json` in this read‑only sandbox.
+
+**Change Plan (once unblocked)**
+- `src/utils/artifacts.py`: add shared save helpers for config/meta/metrics/predictions/model.
+- `scripts/train.py`: call helpers to persist `config.yaml`, `meta.json`, `metrics.json`, `model/model.ckpt`.
+- `scripts/predict.py`: write `predictions.csv` and update `meta.json` with model_version.
+- `tests/contract/`: add contract tests for required files/keys per `docs/04_ARTIFACTS_AND_VERSIONING.md`.
+
+**Implementation**
+- No changes; task is blocked.
+
+**Tests**
+- No tests added/updated.
+
+**Verification**
+- Not run; would be `pytest -q tests/contract`.
+
+**Compatibility Impact**
+- None (no changes).
+
+**Queue Status**
+- Required update: set task 020 to `blocked` in `work/queue.json`. I can’t edit it in read‑only mode.
+- Note: `work/queue.json` currently shows task 020 as `in_progress`, while `work/tasks/020_artifact_contract_impl.md` says blocked.
+
+If you want me to proceed now that 010/015 are done, please either:
+1) Update `work/tasks/020_artifact_contract_impl.md` to remove the Blocked section (or mark it unblocked), and rerun with write access, or  
+2) Make the updates yourself and tell me to continue.

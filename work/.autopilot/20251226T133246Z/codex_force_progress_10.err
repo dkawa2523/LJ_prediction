@@ -1,0 +1,1229 @@
+OpenAI Codex v0.77.0 (research preview)
+--------
+workdir: /Users/kawahito/Desktop/LJ_prediction
+model: gpt-5.2-codex
+provider: openai
+approval: never
+sandbox: workspace-write [workdir, /tmp, $TMPDIR]
+reasoning effort: xhigh
+reasoning summaries: auto
+session id: 019b5c81-cddb-7992-8761-faeb9e6272d2
+--------
+user
+# ===== AUTOPILOT: FORCE PROGRESS (NO QUESTIONS) =====
+あなたは自動ループ中です。**確認質問は禁止**です。次を必ず実行してください。
+
+対象タスク: 090
+
+状況:
+- 直前の出力が「未実装/差分なし/確認お願いします/blockedだから保留」等で停止している可能性があります。
+- ここでは “前に進める” ことが最優先です。
+
+指示（必ずどれか）:
+A) 実装を進める（最小でもよい）→ テスト/検証 → work/queue.json を done に更新
+B) 本当に進められないなら、work/queue.json を blocked に更新し、解除子タスクを起票（子に unblocks を付与）
+C) task.md が stale (Blocked が残っている等) なら task.md/queue.json を修正して整合させてから A へ
+
+禁止:
+- 「確認をお願いします」「進めてよいですか」等の質問
+- “差分なし” で終了
+
+参考: 直前の最終メッセージ（抜粋）
+```
+Using skill S95_tests_ci to add pytest smoke coverage for task 090.
+
+Added a CLI-level FP train/predict smoke test using fixture configs and artifact validation, and marked the task done in `work/queue.json`.
+
+**Change Plan**
+- `tests/integration/test_smoke_fp_train_predict.py`: add FP train/predict CLI smoke test with fixture config + artifact validation.
+- `work/queue.json`: set task 090 status to done after verification.
+
+**Implementation**
+```diff
++++ tests/integration/test_smoke_fp_train_predict.py
++def test_smoke_fp_train_predict(tmp_path: Path) -> None:
++    pytest.importorskip("rdkit")
++    pytest.importorskip("sklearn")
++    ...
++    subprocess.run([sys.executable, "scripts/train.py", "--config", ...], check=True)
++    validate_train_artifacts(...)
++    subprocess.run([sys.executable, "scripts/predict.py", "--config", ..., "--query", "64-17-5"], check=True)
++    validate_predict_artifacts(...)
+```
+
+**Tests Added/Updated**
+- `tests/integration/test_smoke_fp_train_predict.py`
+
+**Verification**
+- `pytest -q` (16 passed)
+
+**Compatibility Impact**
+- config/CLI/artifact: none; test-only changes.
+
+**Queue**
+- `work/queue.json`: task 090 marked done.
+
+Next step (optional):
+1) Add a GitHub Actions workflow to run `pytest -q` on push/PR.
+```
+
+mcp: context7 starting
+mcp: context7 ready
+mcp startup: ready: context7
+
+thinking
+**Preparing to inspect repository**
+exec
+/bin/zsh -lc ls in /Users/kawahito/Desktop/LJ_prediction succeeded in 292ms:
+README.md
+agentskills
+codex
+configs
+data
+docs
+learning_curve_val.png
+objective.md
+parity_test.png
+parity_val.png
+requirements.txt
+residual_test.png
+residual_val.png
+runs
+scripts
+src
+tests
+tools
+work
+y_train_hist.png
+
+thinking
+**Checking for available skills**
+exec
+/bin/zsh -lc 'ls work' in /Users/kawahito/Desktop/LJ_prediction succeeded in 281ms:
+AUTOMATION.md
+AUTOPILOT.md
+BACKLOG.md
+README.md
+REPO_ORIENTATION.md
+queue.json
+rfc
+tasks
+templates
+
+thinking
+**Checking for AUTOPILOT instructions**
+exec
+/bin/zsh -lc 'cat work/queue.json' in /Users/kawahito/Desktop/LJ_prediction succeeded in 266ms:
+{
+  "version": 1,
+  "updated_at": "2025-12-26T21:11:28.787213Z",
+  "policy": {
+    "priority_order": [
+      "P0",
+      "P1",
+      "P2",
+      "P3"
+    ],
+    "status_order": [
+      "todo",
+      "in_progress",
+      "blocked",
+      "done"
+    ],
+    "auto_set_in_progress_on_next": true
+  },
+  "tasks": [
+    {
+
+thinking
+**Verifying task status and related skills**
+exec
+/bin/zsh -lc "rg --files -g 'SKILL.md' agentskills codex docs work" in /Users/kawahito/Desktop/LJ_prediction exited 1 in 282ms:
+
+
+thinking
+**Checking for agent skills**
+exec
+/bin/zsh -lc 'ls agentskills' in /Users/kawahito/Desktop/LJ_prediction succeeded in 273ms:
+README.md
+ROUTER.md
+skill_registry.json
+skill_template.md
+skills
+
+thinking
+**Searching for SKILL.md file**
+exec
+/bin/zsh -lc "rg --files -g 'SKILL.md' agentskills" in /Users/kawahito/Desktop/LJ_prediction exited 1 in 268ms:
+
+
+thinking
+**Checking for skill documentation**
+exec
+/bin/zsh -lc 'ls agentskills/skills' in /Users/kawahito/Desktop/LJ_prediction succeeded in 267ms:
+S00_repo_orientation.md
+S10_hydra_config.md
+S20_dataset_loader.md
+S30_preprocess_pipeline.md
+S40_featurizer.md
+S50_model_plugin.md
+S60_trainer_loop.md
+S70_evaluator_metrics.md
+S80_inference_cli_api.md
+S90_artifacts_versioning.md
+S95_tests_ci.md
+
+thinking
+**Opening skill file for S95_tests_ci**
+exec
+/bin/zsh -lc 'cat agentskills/skills/S95_tests_ci.md' in /Users/kawahito/Desktop/LJ_prediction succeeded in 273ms:
+# S95 Tests & CI
+
+## Purpose
+pytest + smoke + contract test を整備し、改修で壊れないようにする。
+
+## Allowed Changes
+- tests/**
+- pyproject.toml（任意）
+- .github/workflows/**（任意）
+
+## Pitfalls
+- smoke が重くなりすぎる
+- 乱数により flaky になる
+
+thinking
+**Reviewing task 090 instructions**
+exec
+/bin/zsh -lc 'cat work/tasks/090_ci_tests.md' in /Users/kawahito/Desktop/LJ_prediction succeeded in 263ms:
+# Task 090 (P2): CI/テスト整備
+
+## 目的
+- 何十回の改修でも壊れないように、自動テストとlintを入れる
+
+## Plan
+1) `pytest` の導入と最小テスト追加
+2) smoke config（quick）で train/predict が通る integration test
+3) GitHub Actions（任意）で test を回す
+
+## Acceptance Criteria
+- [ ] `pytest -q` が通る
+- [ ] integration smoke が通る
+
+thinking
+**Checking task file consistency**
+exec
+/bin/zsh -lc "rg --files -g 'test_smoke_fp_train_predict.py' tests" in /Users/kawahito/Desktop/LJ_prediction succeeded in 298ms:
+tests/integration/test_smoke_fp_train_predict.py
+
+thinking
+**Opening file**
+exec
+/bin/zsh -lc "sed -n '1,200p' tests/integration/test_smoke_fp_train_predict.py" in /Users/kawahito/Desktop/LJ_prediction succeeded in 274ms:
+from __future__ import annotations
+
+import subprocess
+import sys
+from pathlib import Path
+
+import pytest
+
+from src.common.config import dump_yaml, load_config
+from src.utils.artifacts import validate_predict_artifacts, validate_train_artifacts
+
+
+def test_smoke_fp_train_predict(tmp_path: Path) -> None:
+    pytest.importorskip("rdkit")
+    pytest.importorskip("sklearn")
+
+    repo_root = Path(__file__).resolve().parents[2]
+
+    train_cfg = load_config(repo_root / "configs/fp/train_fixture.yaml")
+    train_run_root = tmp_path / "runs" / "train" / "fp"
+
+thinking
+**Assessing test and task checklist alignment**
+exec
+/bin/zsh -lc 'ls .github/workflows' in /Users/kawahito/Desktop/LJ_prediction exited 1 in 267ms:
+ls: .github/workflows: No such file or directory
+
+thinking
+**Reviewing autopilot task instructions**
+exec
+/bin/zsh -lc 'cat work/AUTOPILOT.md' in /Users/kawahito/Desktop/LJ_prediction succeeded in 259ms:
+# Autopilot: Codex + codex_prompt の自動ループ実行
+
+このリポジトリの開発は `work/queue.json` のタスクを `tools/codex_prompt.py next` で選び、
+そのプロンプトを Codex に貼って実行する想定です。
+
+ここでは、**その反復を自動化**する方法をまとめます。
+
+> ⚠️ 注意:
+> - 完全自動化は便利ですが、誤編集・誤コマンド実行のリスクが上がります。
+> - まずは `--full-auto` ではなく **sandbox/approval を厳しめ**にして試し、慣れてから自動化範囲を増やしてください。
+
+---
+
+## 推奨: Codex CLI の `codex exec` を使う
+
+Codex CLI は `codex exec` で非対話実行でき、**PROMPT に `-` を指定すると stdin からプロンプトを受け取れます**。
+
+最小ワンライナー:
+
+```bash
+
+thinking
+**Evaluating task 090 update strategy**
+exec
+/bin/zsh -lc 'cat work/AUTOMATION.md' in /Users/kawahito/Desktop/LJ_prediction succeeded in 320ms:
+# タスク/スキル指定の手間を減らす（AUTO運用）
+
+## 目的
+- 毎回「このタスク」「このスキル」をプロンプトに書くのが面倒 → 自動化します。
+
+---
+
+## 方法A：Codex AUTO（最小手間）
+1) `codex/AUTO.md` を一度貼る（または「AUTOモードで」と指示）
+2) Codex が `work/queue.json` を読み、優先度順にタスクを選ぶ
+3) Codex が必要なスキルカード・契約 docs を開いて進める
+4) 終わったら `work/queue.json` を done に更新
+
+---
+
+## 方法B：ローカルで “貼り付け用プロンプト” を生成（安定）
+```bash
+python tools/codex_prompt.py list
+python tools/codex_prompt.py next
+```
+
+thinking
+**Evaluating test task updates**
+exec
+/bin/zsh -lc 'cat docs/06_TEST_POLICY.md' in /Users/kawahito/Desktop/LJ_prediction succeeded in 280ms:
+# Test Policy（テスト方針）
+
+このドキュメントは「何十回の改修で壊れない」ためのテスト戦略です。
+
+## 1. テストの種類
+### 1.1 Unit
+- 小さな関数/クラス（特徴量、メトリクスなど）
+- 実行が速い（数秒以内）
+
+### 1.2 Integration（smoke）
+- CLI で学習/推論が最小データで完走する
+- 成果物（artifact）が契約どおり出る
+
+### 1.3 Contract（ゴールデン）
+- `predictions.csv` の列や `meta.json` のキーが壊れていないか
+- config validation が期待通り落ちるか（無効組合せの検出）
+
+## 2. 最低ライン（PRの受け入れ条件）
+- 新機能/修正には **最低1つ** テストを追加する
+- `pytest -q` が通ること
+
+thinking
+**Opening INVARIANTS documentation**
+exec
+/bin/zsh -lc 'cat docs/00_INVARIANTS.md' in /Users/kawahito/Desktop/LJ_prediction succeeded in 276ms:
+# Invariants（不変条件）
+
+このドキュメントは **開発中に変えてはいけない契約（Codexも遵守）** です。  
+迷ったらここへ戻り、ここに書かれていない“勝手な最適化”をしないでください。
+
+---
+
+## 0. 基本目的（この基盤のゴール）
+- **入力**: 化学構造（主に **CSV + SDF**。将来もこの形式を軸にする）
+- **出力**: 物性（LJパラメータに限らず、**同じCSV/SDF形式のまま目的変数を差し替える**）
+- **操作**: **CLI**（**Hydra**で設定管理）
+- **要求**:
+  - 前処理・特徴量化・学習・評価・推論・可視化を **拡張しやすい**
+  - モデル/特徴量の手法が複数あり、**選択して実行・比較評価しやすい**
+
+---
+
+## 1. もっとも重要な不変条件（破るなら RFC→ADR→更新）
+
+### 1.1 「処理単位（Process）」が第一級（最重要）
+
+thinking
+**Planning acceptance criteria and CI integration**
+exec
+/bin/zsh -lc 'cat requirements.txt' in /Users/kawahito/Desktop/LJ_prediction succeeded in 275ms:
+# Core
+numpy
+pandas
+pyyaml
+tqdm
+matplotlib
+scikit-learn
+joblib
+
+# Chemistry
+rdkit  # usually installed via conda-forge; pip availability depends on platform
+
+# FP models
+lightgbm
+catboost
+
+# GNN (optional; install matching versions manually)
+torch
+# torch-geometric  # install via official instructions
+
+thinking
+**Evaluating rdkit dependency risks**
+exec
+/bin/zsh -lc 'find tests -type f -maxdepth 3 -print' in /Users/kawahito/Desktop/LJ_prediction succeeded in 270ms:
+tests/test_audit_dataset.py
+tests/conftest.py
+tests/contract/__pycache__/test_artifacts_contract.cpython-310-pytest-9.0.1.pyc
+tests/contract/test_artifacts_contract.py
+tests/test_config_loader.py
+tests/test_feature_pipeline.py
+tests/integration/__pycache__/test_smoke_fp_train_predict.cpython-310-pytest-9.0.1.pyc
+tests/integration/test_smoke_fp_train_predict.py
+tests/test_data_collection.py
+tests/__pycache__/test_tasks.cpython-310-pytest-9.0.1.pyc
+tests/__pycache__/test_data_collection.cpython-310-pytest-9.0.1.pyc
+tests/__pycache__/test_fixture_dataset.cpython-310-pytest-9.0.1.pyc
+tests/__pycache__/test_audit_dataset.cpython-310-pytest-9.0.1.pyc
+tests/__pycache__/test_feature_pipeline.cpython-310-pytest-9.0.1.pyc
+tests/__pycache__/test_splitters.cpython-310-pytest-9.0.1.pyc
+tests/__pycache__/test_leaderboard.cpython-310-pytest-9.0.1.pyc
+tests/__pycache__/conftest.cpython-310-pytest-9.0.1.pyc
+tests/__pycache__/test_config_loader.cpython-310-pytest-9.0.1.pyc
+tests/test_leaderboard.py
+tests/test_tasks.py
+
+thinking
+**Considering test dependencies and CI setup**
+exec
+/bin/zsh -lc 'rg -n "importorskip|rdkit|lightgbm|catboost|torch" tests' in /Users/kawahito/Desktop/LJ_prediction succeeded in 282ms:
+tests/test_splitters.py:37:    pytest.importorskip("rdkit")
+tests/test_splitters.py:38:    from rdkit import Chem
+tests/integration/test_smoke_fp_train_predict.py:14:    pytest.importorskip("rdkit")
+tests/integration/test_smoke_fp_train_predict.py:15:    pytest.importorskip("sklearn")
+tests/contract/test_artifacts_contract.py:37:        "model": {"name": "lightgbm"},
+tests/contract/test_artifacts_contract.py:49:    assert meta["model_name"] == "lightgbm"
+tests/test_feature_pipeline.py:19:    pytest.importorskip("rdkit")
+tests/test_feature_pipeline.py:55:    pytest.importorskip("rdkit")
+tests/test_audit_dataset.py:9:rdkit = pytest.importorskip("rdkit")
+tests/test_audit_dataset.py:10:from rdkit import Chem
+
+thinking
+**Reviewing test dependencies for CI setup**
+
+I’m considering how missing heavy libraries like rdkit affect tests and CI; since tests using importorskip will silently skip if libs are missing, the suite can pass but with skipped tests. I want to set up CI to install minimal dependencies excluding rdkit to avoid install failures, while ensuring light dependencies for most tests. Since adding new requirements files may be outside allowed changes, I'll explore adjusting the GitHub workflow to install necessary packages individually and verify test dependencies by scanning imports in the tests folder.
+exec
+/bin/zsh -lc "sed -n '1,200p' tests/test_feature_pipeline.py" in /Users/kawahito/Desktop/LJ_prediction succeeded in 282ms:
+from __future__ import annotations
+
+from pathlib import Path
+
+import numpy as np
+import pytest
+
+from src.common.feature_pipeline import EmbeddingFeaturePipeline, FingerprintFeaturePipeline, load_feature_pipeline, save_feature_pipeline
+from src.common.io import load_sdf_mol, sdf_path_from_cas
+
+
+def _load_fixture_mol(cas: str):
+    root = Path(__file__).resolve().parents[1]
+    sdf_dir = root / "tests" / "fixtures" / "data" / "raw" / "sdf_files"
+    return load_sdf_mol(sdf_path_from_cas(sdf_dir, cas))
+
+
+def test_fp_pipeline_roundtrip(tmp_path: Path) -> None:
+    pytest.importorskip("rdkit")
+
+
+thinking
+**Checking dependencies in tests**
+exec
+/bin/zsh -lc "sed -n '1,200p' tests/test_config_loader.py" in /Users/kawahito/Desktop/LJ_prediction succeeded in 275ms:
+from pathlib import Path
+
+from src.common.config import load_config
+
+
+def test_load_config_resolves_groups_from_root() -> None:
+    cfg = load_config(Path("configs/fp/train_fixture.yaml"))
+
+    assert cfg["process"]["name"] == "train"
+    assert cfg["process"]["backend"] == "fp"
+    assert cfg["output"]["run_dir"] == "runs/train/fp"
+    assert cfg["paths"]["raw_csv"] == "tests/fixtures/data/raw/tc_pc_tb_fixture.csv"
+
+
+def test_load_gin_model_config() -> None:
+    cfg = load_config(Path("configs/model/gin.yaml"))
+
+    assert cfg["model"]["name"] == "gin"
+    assert cfg["model"]["family"] == "gnn"
+
+thinking
+**Checking dependencies for config and tests**
+exec
+/bin/zsh -lc "sed -n '1,200p' tests/test_audit_dataset.py" in /Users/kawahito/Desktop/LJ_prediction succeeded in 271ms:
+from __future__ import annotations
+
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+import pytest
+
+rdkit = pytest.importorskip("rdkit")
+from rdkit import Chem
+
+from src.data.audit import audit_dataset
+
+
+def _write_sdf(path: Path, smiles: str) -> None:
+    mol = Chem.MolFromSmiles(smiles)
+    assert mol is not None
+    writer = Chem.SDWriter(str(path))
+    writer.write(mol)
+    writer.close()
+
+thinking
+**Checking test dependencies**
+exec
+/bin/zsh -lc "sed -n '1,200p' tests/test_data_collection.py" in /Users/kawahito/Desktop/LJ_prediction succeeded in 272ms:
+from __future__ import annotations
+
+from pathlib import Path
+
+import pandas as pd
+
+from src.data_collection.runner import run
+
+
+def test_collect_data_dummy(tmp_path: Path) -> None:
+    cfg = {
+        "process": {"name": "collect_data"},
+        "output": {"run_dir": str(tmp_path / "runs"), "exp_name": "dummy_run"},
+        "data_collection": {
+            "query": {"identifiers": ["64-17-5"], "limit": 1},
+            "required_columns": ["CAS", "MolecularFormula", "Tc [K]"],
+            "sample_id_column": "sample_id",
+            "cache": {"enabled": False},
+            "output": {"raw_csv_name": "raw.csv", "sdf_dir_name": "sdf_files", "overwrite": True},
+            "export": {"enabled": False},
+
+thinking
+**Checking test dependencies**
+exec
+/bin/zsh -lc 'rg -n "matplotlib|plt" tests' in /Users/kawahito/Desktop/LJ_prediction exited 1 in 294ms:
+
+
+thinking
+**Analyzing test dependencies**
+exec
+/bin/zsh -lc "sed -n '1,200p' tests/test_splitters.py" in /Users/kawahito/Desktop/LJ_prediction succeeded in 277ms:
+from __future__ import annotations
+
+from pathlib import Path
+
+import pandas as pd
+import pytest
+
+from src.common.splitters import (
+    build_group_map,
+    group_split,
+    random_split,
+    scaffold_split,
+    validate_group_leakage,
+    validate_scaffold_split,
+    validate_split_indices,
+)
+
+
+def test_random_split_reproducible() -> None:
+    df = pd.DataFrame({"CAS": [f"X{i:02d}" for i in range(30)]})
+
+thinking
+**Checking for joblib usage**
+exec
+/bin/zsh -lc 'rg -n "joblib" src' in /Users/kawahito/Desktop/LJ_prediction exited 1 in 277ms:
+
+
+thinking
+**Checking module dependencies for imports**
+exec
+/bin/zsh -lc "sed -n '1,200p' src/data_collection/runner.py" in /Users/kawahito/Desktop/LJ_prediction succeeded in 275ms:
+from __future__ import annotations
+
+import shutil
+from pathlib import Path
+from typing import Any, Dict, Iterable, Optional
+
+import pandas as pd
+
+from src.common.config import dump_yaml
+from src.common.io import write_csv
+from src.common.meta import build_meta, save_meta
+from src.common.utils import ensure_dir, get_logger
+from src.data_collection.cache import FileCache
+from src.data_collection.registry import create_data_source
+from src.data_collection.types import DataCollectionQuery
+from src.utils.artifacts import hash_files
+from src.utils.validate_config import validate_config
+
+
+def _parse_query(source_cfg: Dict[str, Any], collection_cfg: Dict[str, Any]) -> DataCollectionQuery:
+
+thinking
+**Checking dependencies**
+exec
+/bin/zsh -lc 'rg -n "import .*tqdm|tqdm" src/common' in /Users/kawahito/Desktop/LJ_prediction exited 1 in 274ms:
+
+
+thinking
+**Checking dependencies in feature pipeline**
+exec
+/bin/zsh -lc 'rg -n "sklearn" src/common' in /Users/kawahito/Desktop/LJ_prediction succeeded in 269ms:
+src/common/feature_pipeline.py:9:from sklearn.impute import SimpleImputer
+src/common/feature_pipeline.py:10:from sklearn.preprocessing import StandardScaler
+src/common/metrics.py:7:from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+
+thinking
+**Evaluating test dependencies and CI workflow**
+exec
+/bin/zsh -lc "sed -n '1,200p' tests/conftest.py" in /Users/kawahito/Desktop/LJ_prediction succeeded in 294ms:
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+thinking
+**Considering scikit-learn test availability**
+exec
+/bin/zsh -lc "python - <<'PY'
+try:
+    import sklearn  # noqa: F401
+    print('sklearn: ok')
+except Exception as exc:
+    print(f'sklearn: {exc.__class__.__name__}: {exc}')
+PY" in /Users/kawahito/Desktop/LJ_prediction succeeded in 1.70s:
+sklearn: ok
+
+thinking
+**Designing GitHub Actions workflow**
+
+I’m planning a minimal GitHub Actions workflow to run pytest with essential dependencies like scikit-learn and its requirements. I’m considering potential test skips if rdkit is missing and checking for matplotlib imports in test-related modules to ensure smooth test runs.
+exec
+/bin/zsh -lc "sed -n '1,200p' tests/test_leaderboard.py" in /Users/kawahito/Desktop/LJ_prediction succeeded in 267ms:
+from __future__ import annotations
+
+import csv
+from pathlib import Path
+
+from src.common.leaderboard import run
+from src.common.utils import save_json
+
+
+def _write_meta(run_dir: Path, **overrides) -> None:
+    meta = {
+        "run_id": overrides.get("run_id", "run"),
+        "process_name": overrides.get("process_name", "train"),
+        "created_at": overrides.get("created_at", "2025-01-01T00:00:00Z"),
+        "git_sha": overrides.get("git_sha", "deadbeef"),
+        "dataset_hash": overrides.get("dataset_hash", "dataset"),
+        "config_hash": overrides.get("config_hash", "config"),
+        "task_name": overrides.get("task_name", "lj_epsilon"),
+        "model_name": overrides.get("model_name", "rf"),
+        "featureset_name": overrides.get("featureset_name", "fp_morgan"),
+
+thinking
+**Checking test import dependencies**
+exec
+/bin/zsh -lc "sed -n '1,200p' src/common/leaderboard.py" in /Users/kawahito/Desktop/LJ_prediction succeeded in 259ms:
+from __future__ import annotations
+
+import csv
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, Iterable, List, Optional, Tuple
+
+from src.common.config import dump_yaml
+from src.common.meta import build_meta, save_meta
+from src.common.utils import ensure_dir, get_logger, load_json
+from src.utils.validate_config import validate_config
+
+
+DEFAULT_FALLBACK_SPLITS = ("val", "test", "train")
+CSV_COLUMNS = (
+    "rank",
+    "metric_value",
+    "metric_key",
+    "metric_split",
+    "metric_source",
+
+thinking
+**Planning CI workflow file creation**
+exec
+/bin/zsh -lc 'mkdir -p .github/workflows' in /Users/kawahito/Desktop/LJ_prediction succeeded in 295ms:
+
+
+thinking
+**Crafting GitHub Actions workflow**
+file update
+A /Users/kawahito/Desktop/LJ_prediction/.github/workflows/pytest.yml
+name: pytest
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: "pip"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pytest numpy pandas pyyaml scikit-learn
+      - name: Run tests
+        run: pytest -q
+apply_patch(auto_approved=true) exited 0 in 37ms:
+Success. Updated the following files:
+A .github/workflows/pytest.yml
+file update:
+diff --git a/.github/workflows/pytest.yml b/.github/workflows/pytest.yml
+new file mode 100644
+index 0000000000000000000000000000000000000000..699b9e0754b2b0d483cdd109d70dbd13d1a0f3ba
+--- /dev/null
++++ b/.github/workflows/pytest.yml
+@@ -0,0 +1,21 @@
++name: pytest
++
++on:
++  push:
++  pull_request:
++
++jobs:
++  pytest:
++    runs-on: ubuntu-latest
++    steps:
++      - uses: actions/checkout@v4
++      - uses: actions/setup-python@v5
++        with:
++          python-version: "3.10"
++          cache: "pip"
++      - name: Install dependencies
++        run: |
++          python -m pip install --upgrade pip
++          python -m pip install pytest numpy pandas pyyaml scikit-learn
++      - name: Run tests
++        run: pytest -q
+
+file update:
+diff --git a/.github/workflows/pytest.yml b/.github/workflows/pytest.yml
+new file mode 100644
+index 0000000000000000000000000000000000000000..699b9e0754b2b0d483cdd109d70dbd13d1a0f3ba
+--- /dev/null
++++ b/.github/workflows/pytest.yml
+@@ -0,0 +1,21 @@
++name: pytest
++
++on:
++  push:
++  pull_request:
++
++jobs:
++  pytest:
++    runs-on: ubuntu-latest
++    steps:
++      - uses: actions/checkout@v4
++      - uses: actions/setup-python@v5
++        with:
++          python-version: "3.10"
++          cache: "pip"
++      - name: Install dependencies
++        run: |
++          python -m pip install --upgrade pip
++          python -m pip install pytest numpy pandas pyyaml scikit-learn
++      - name: Run tests
++        run: pytest -q
+
+
+thinking
+**Updating task markdown for acceptance status**
+file update
+M /Users/kawahito/Desktop/LJ_prediction/work/tasks/090_ci_tests.md
+@@ -11,3 +11,6 @@
+ ## Acceptance Criteria
+-- [ ] `pytest -q` が通る
+-- [ ] integration smoke が通る
++- [x] `pytest -q` が通る
++- [x] integration smoke が通る
++
++## Notes
++- GitHub Actions で pytest を実行する workflow を追加済み
+apply_patch(auto_approved=true) exited 0 in 32ms:
+Success. Updated the following files:
+M work/tasks/090_ci_tests.md
+file update:
+diff --git a/.github/workflows/pytest.yml b/.github/workflows/pytest.yml
+new file mode 100644
+index 0000000000000000000000000000000000000000..699b9e0754b2b0d483cdd109d70dbd13d1a0f3ba
+--- /dev/null
++++ b/.github/workflows/pytest.yml
+@@ -0,0 +1,21 @@
++name: pytest
++
++on:
++  push:
++  pull_request:
++
++jobs:
++  pytest:
++    runs-on: ubuntu-latest
++    steps:
++      - uses: actions/checkout@v4
++      - uses: actions/setup-python@v5
++        with:
++          python-version: "3.10"
++          cache: "pip"
++      - name: Install dependencies
++        run: |
++          python -m pip install --upgrade pip
++          python -m pip install pytest numpy pandas pyyaml scikit-learn
++      - name: Run tests
++        run: pytest -q
+diff --git a/work/tasks/090_ci_tests.md b/work/tasks/090_ci_tests.md
+index fa4fa7805c1e462797fb52356e1d724abee435d8..fde59a128996f690a178730e6e1a35b67af4c751
+--- a/work/tasks/090_ci_tests.md
++++ b/work/tasks/090_ci_tests.md
+@@ -9,5 +9,8 @@
+ 3) GitHub Actions（任意）で test を回す
+ 
+ ## Acceptance Criteria
+-- [ ] `pytest -q` が通る
+-- [ ] integration smoke が通る
++- [x] `pytest -q` が通る
++- [x] integration smoke が通る
++
++## Notes
++- GitHub Actions で pytest を実行する workflow を追加済み
+
+file update:
+diff --git a/.github/workflows/pytest.yml b/.github/workflows/pytest.yml
+new file mode 100644
+index 0000000000000000000000000000000000000000..699b9e0754b2b0d483cdd109d70dbd13d1a0f3ba
+--- /dev/null
++++ b/.github/workflows/pytest.yml
+@@ -0,0 +1,21 @@
++name: pytest
++
++on:
++  push:
++  pull_request:
++
++jobs:
++  pytest:
++    runs-on: ubuntu-latest
++    steps:
++      - uses: actions/checkout@v4
++      - uses: actions/setup-python@v5
++        with:
++          python-version: "3.10"
++          cache: "pip"
++      - name: Install dependencies
++        run: |
++          python -m pip install --upgrade pip
++          python -m pip install pytest numpy pandas pyyaml scikit-learn
++      - name: Run tests
++        run: pytest -q
+diff --git a/work/tasks/090_ci_tests.md b/work/tasks/090_ci_tests.md
+index fa4fa7805c1e462797fb52356e1d724abee435d8..fde59a128996f690a178730e6e1a35b67af4c751
+--- a/work/tasks/090_ci_tests.md
++++ b/work/tasks/090_ci_tests.md
+@@ -9,5 +9,8 @@
+ 3) GitHub Actions（任意）で test を回す
+ 
+ ## Acceptance Criteria
+-- [ ] `pytest -q` が通る
+-- [ ] integration smoke が通る
++- [x] `pytest -q` が通る
++- [x] integration smoke が通る
++
++## Notes
++- GitHub Actions で pytest を実行する workflow を追加済み
+
+
+thinking
+**Handling non-ASCII and timestamps**
+exec
+/bin/zsh -lc "python - <<'PY'
+from datetime import datetime, timezone
+print(datetime.now(timezone.utc).isoformat())
+PY" in /Users/kawahito/Desktop/LJ_prediction succeeded in 297ms:
+2025-12-26T21:17:19.610136+00:00
+file update:
+diff --git a/.github/workflows/pytest.yml b/.github/workflows/pytest.yml
+new file mode 100644
+index 0000000000000000000000000000000000000000..699b9e0754b2b0d483cdd109d70dbd13d1a0f3ba
+--- /dev/null
++++ b/.github/workflows/pytest.yml
+@@ -0,0 +1,21 @@
++name: pytest
++
++on:
++  push:
++  pull_request:
++
++jobs:
++  pytest:
++    runs-on: ubuntu-latest
++    steps:
++      - uses: actions/checkout@v4
++      - uses: actions/setup-python@v5
++        with:
++          python-version: "3.10"
++          cache: "pip"
++      - name: Install dependencies
++        run: |
++          python -m pip install --upgrade pip
++          python -m pip install pytest numpy pandas pyyaml scikit-learn
++      - name: Run tests
++        run: pytest -q
+diff --git a/work/tasks/090_ci_tests.md b/work/tasks/090_ci_tests.md
+index fa4fa7805c1e462797fb52356e1d724abee435d8..fde59a128996f690a178730e6e1a35b67af4c751
+--- a/work/tasks/090_ci_tests.md
++++ b/work/tasks/090_ci_tests.md
+@@ -9,5 +9,8 @@
+ 3) GitHub Actions（任意）で test を回す
+ 
+ ## Acceptance Criteria
+-- [ ] `pytest -q` が通る
+-- [ ] integration smoke が通る
++- [x] `pytest -q` が通る
++- [x] integration smoke が通る
++
++## Notes
++- GitHub Actions で pytest を実行する workflow を追加済み
+
+
+thinking
+**Adjusting timestamp formatting**
+exec
+/bin/zsh -lc "python - <<'PY'
+from datetime import datetime, timezone
+print(datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'))
+PY" in /Users/kawahito/Desktop/LJ_prediction succeeded in 281ms:
+2025-12-26T21:17:23.826871Z
+file update:
+diff --git a/.github/workflows/pytest.yml b/.github/workflows/pytest.yml
+new file mode 100644
+index 0000000000000000000000000000000000000000..699b9e0754b2b0d483cdd109d70dbd13d1a0f3ba
+--- /dev/null
++++ b/.github/workflows/pytest.yml
+@@ -0,0 +1,21 @@
++name: pytest
++
++on:
++  push:
++  pull_request:
++
++jobs:
++  pytest:
++    runs-on: ubuntu-latest
++    steps:
++      - uses: actions/checkout@v4
++      - uses: actions/setup-python@v5
++        with:
++          python-version: "3.10"
++          cache: "pip"
++      - name: Install dependencies
++        run: |
++          python -m pip install --upgrade pip
++          python -m pip install pytest numpy pandas pyyaml scikit-learn
++      - name: Run tests
++        run: pytest -q
+diff --git a/work/tasks/090_ci_tests.md b/work/tasks/090_ci_tests.md
+index fa4fa7805c1e462797fb52356e1d724abee435d8..fde59a128996f690a178730e6e1a35b67af4c751
+--- a/work/tasks/090_ci_tests.md
++++ b/work/tasks/090_ci_tests.md
+@@ -9,5 +9,8 @@
+ 3) GitHub Actions（任意）で test を回す
+ 
+ ## Acceptance Criteria
+-- [ ] `pytest -q` が通る
+-- [ ] integration smoke が通る
++- [x] `pytest -q` が通る
++- [x] integration smoke が通る
++
++## Notes
++- GitHub Actions で pytest を実行する workflow を追加済み
+
+
+thinking
+**Updating timestamp in queue.json**
+file update
+M /Users/kawahito/Desktop/LJ_prediction/work/queue.json
+@@ -2,3 +2,3 @@
+   "version": 1,
+-  "updated_at": "2025-12-26T21:11:28.787213Z",
++  "updated_at": "2025-12-26T21:17:23.826871Z",
+   "policy": {
+apply_patch(auto_approved=true) exited 0 in 35ms:
+Success. Updated the following files:
+M work/queue.json
+file update:
+diff --git a/.github/workflows/pytest.yml b/.github/workflows/pytest.yml
+new file mode 100644
+index 0000000000000000000000000000000000000000..699b9e0754b2b0d483cdd109d70dbd13d1a0f3ba
+--- /dev/null
++++ b/.github/workflows/pytest.yml
+@@ -0,0 +1,21 @@
++name: pytest
++
++on:
++  push:
++  pull_request:
++
++jobs:
++  pytest:
++    runs-on: ubuntu-latest
++    steps:
++      - uses: actions/checkout@v4
++      - uses: actions/setup-python@v5
++        with:
++          python-version: "3.10"
++          cache: "pip"
++      - name: Install dependencies
++        run: |
++          python -m pip install --upgrade pip
++          python -m pip install pytest numpy pandas pyyaml scikit-learn
++      - name: Run tests
++        run: pytest -q
+diff --git a/work/queue.json b/work/queue.json
+index 025e30c9a8ff28e496752a00f13cf029735182e1..feeae64b5e23847ae2529e0819832919ecc8c703
+--- a/work/queue.json
++++ b/work/queue.json
+@@ -1,6 +1,6 @@
+ {
+   "version": 1,
+-  "updated_at": "2025-12-26T21:11:28.787213Z",
++  "updated_at": "2025-12-26T21:17:23.826871Z",
+   "policy": {
+     "priority_order": [
+       "P0",
+diff --git a/work/tasks/090_ci_tests.md b/work/tasks/090_ci_tests.md
+index fa4fa7805c1e462797fb52356e1d724abee435d8..fde59a128996f690a178730e6e1a35b67af4c751
+--- a/work/tasks/090_ci_tests.md
++++ b/work/tasks/090_ci_tests.md
+@@ -9,5 +9,8 @@
+ 3) GitHub Actions（任意）で test を回す
+ 
+ ## Acceptance Criteria
+-- [ ] `pytest -q` が通る
+-- [ ] integration smoke が通る
++- [x] `pytest -q` が通る
++- [x] integration smoke が通る
++
++## Notes
++- GitHub Actions で pytest を実行する workflow を追加済み
+
+file update:
+diff --git a/.github/workflows/pytest.yml b/.github/workflows/pytest.yml
+new file mode 100644
+index 0000000000000000000000000000000000000000..699b9e0754b2b0d483cdd109d70dbd13d1a0f3ba
+--- /dev/null
++++ b/.github/workflows/pytest.yml
+@@ -0,0 +1,21 @@
++name: pytest
++
++on:
++  push:
++  pull_request:
++
++jobs:
++  pytest:
++    runs-on: ubuntu-latest
++    steps:
++      - uses: actions/checkout@v4
++      - uses: actions/setup-python@v5
++        with:
++          python-version: "3.10"
++          cache: "pip"
++      - name: Install dependencies
++        run: |
++          python -m pip install --upgrade pip
++          python -m pip install pytest numpy pandas pyyaml scikit-learn
++      - name: Run tests
++        run: pytest -q
+diff --git a/work/queue.json b/work/queue.json
+index 025e30c9a8ff28e496752a00f13cf029735182e1..feeae64b5e23847ae2529e0819832919ecc8c703
+--- a/work/queue.json
++++ b/work/queue.json
+@@ -1,6 +1,6 @@
+ {
+   "version": 1,
+-  "updated_at": "2025-12-26T21:11:28.787213Z",
++  "updated_at": "2025-12-26T21:17:23.826871Z",
+   "policy": {
+     "priority_order": [
+       "P0",
+diff --git a/work/tasks/090_ci_tests.md b/work/tasks/090_ci_tests.md
+index fa4fa7805c1e462797fb52356e1d724abee435d8..fde59a128996f690a178730e6e1a35b67af4c751
+--- a/work/tasks/090_ci_tests.md
++++ b/work/tasks/090_ci_tests.md
+@@ -9,5 +9,8 @@
+ 3) GitHub Actions（任意）で test を回す
+ 
+ ## Acceptance Criteria
+-- [ ] `pytest -q` が通る
+-- [ ] integration smoke が通る
++- [x] `pytest -q` が通る
++- [x] integration smoke が通る
++
++## Notes
++- GitHub Actions で pytest を実行する workflow を追加済み
+
+
+thinking
+**Running tests to verify workflow**
+exec
+/bin/zsh -lc 'pytest -q' in /Users/kawahito/Desktop/LJ_prediction succeeded in 5.44s:
+................                                                         [100%]
+16 passed in 4.87s
+file update:
+diff --git a/.github/workflows/pytest.yml b/.github/workflows/pytest.yml
+new file mode 100644
+index 0000000000000000000000000000000000000000..699b9e0754b2b0d483cdd109d70dbd13d1a0f3ba
+--- /dev/null
++++ b/.github/workflows/pytest.yml
+@@ -0,0 +1,21 @@
++name: pytest
++
++on:
++  push:
++  pull_request:
++
++jobs:
++  pytest:
++    runs-on: ubuntu-latest
++    steps:
++      - uses: actions/checkout@v4
++      - uses: actions/setup-python@v5
++        with:
++          python-version: "3.10"
++          cache: "pip"
++      - name: Install dependencies
++        run: |
++          python -m pip install --upgrade pip
++          python -m pip install pytest numpy pandas pyyaml scikit-learn
++      - name: Run tests
++        run: pytest -q
+diff --git a/work/queue.json b/work/queue.json
+index 025e30c9a8ff28e496752a00f13cf029735182e1..feeae64b5e23847ae2529e0819832919ecc8c703
+--- a/work/queue.json
++++ b/work/queue.json
+@@ -1,6 +1,6 @@
+ {
+   "version": 1,
+-  "updated_at": "2025-12-26T21:11:28.787213Z",
++  "updated_at": "2025-12-26T21:17:23.826871Z",
+   "policy": {
+     "priority_order": [
+       "P0",
+diff --git a/work/tasks/090_ci_tests.md b/work/tasks/090_ci_tests.md
+index fa4fa7805c1e462797fb52356e1d724abee435d8..fde59a128996f690a178730e6e1a35b67af4c751
+--- a/work/tasks/090_ci_tests.md
++++ b/work/tasks/090_ci_tests.md
+@@ -9,5 +9,8 @@
+ 3) GitHub Actions（任意）で test を回す
+ 
+ ## Acceptance Criteria
+-- [ ] `pytest -q` が通る
+-- [ ] integration smoke が通る
++- [x] `pytest -q` が通る
++- [x] integration smoke が通る
++
++## Notes
++- GitHub Actions で pytest を実行する workflow を追加済み
+
+
+thinking
+**Preparing final response details**
+codex
+Using skill S95_tests_ci to finalize CI/test setup for task 090.
+
+Added a minimal GitHub Actions pytest workflow so CI runs `pytest -q`, and synced task metadata to reflect completion.
+- `.github/workflows/pytest.yml`: new CI job with minimal deps and `pytest -q`.
+- `work/tasks/090_ci_tests.md`: checked off acceptance criteria and noted the workflow.
+- `work/queue.json`: refreshed `updated_at` to reflect the completion.
+
+Tests: `pytest -q`
+
+Optional next step: add an rdkit-enabled CI job so chemistry-dependent tests run on CI.
+file update:
+diff --git a/.github/workflows/pytest.yml b/.github/workflows/pytest.yml
+new file mode 100644
+index 0000000000000000000000000000000000000000..699b9e0754b2b0d483cdd109d70dbd13d1a0f3ba
+--- /dev/null
++++ b/.github/workflows/pytest.yml
+@@ -0,0 +1,21 @@
++name: pytest
++
++on:
++  push:
++  pull_request:
++
++jobs:
++  pytest:
++    runs-on: ubuntu-latest
++    steps:
++      - uses: actions/checkout@v4
++      - uses: actions/setup-python@v5
++        with:
++          python-version: "3.10"
++          cache: "pip"
++      - name: Install dependencies
++        run: |
++          python -m pip install --upgrade pip
++          python -m pip install pytest numpy pandas pyyaml scikit-learn
++      - name: Run tests
++        run: pytest -q
+diff --git a/work/queue.json b/work/queue.json
+index 025e30c9a8ff28e496752a00f13cf029735182e1..feeae64b5e23847ae2529e0819832919ecc8c703
+--- a/work/queue.json
++++ b/work/queue.json
+@@ -1,6 +1,6 @@
+ {
+   "version": 1,
+-  "updated_at": "2025-12-26T21:11:28.787213Z",
++  "updated_at": "2025-12-26T21:17:23.826871Z",
+   "policy": {
+     "priority_order": [
+       "P0",
+diff --git a/work/tasks/090_ci_tests.md b/work/tasks/090_ci_tests.md
+index fa4fa7805c1e462797fb52356e1d724abee435d8..fde59a128996f690a178730e6e1a35b67af4c751
+--- a/work/tasks/090_ci_tests.md
++++ b/work/tasks/090_ci_tests.md
+@@ -9,5 +9,8 @@
+ 3) GitHub Actions（任意）で test を回す
+ 
+ ## Acceptance Criteria
+-- [ ] `pytest -q` が通る
+-- [ ] integration smoke が通る
++- [x] `pytest -q` が通る
++- [x] integration smoke が通る
++
++## Notes
++- GitHub Actions で pytest を実行する workflow を追加済み
+
+tokens used
+35,886

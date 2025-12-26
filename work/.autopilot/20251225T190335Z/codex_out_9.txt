@@ -1,0 +1,31 @@
+Using skills S90_artifacts_versioning and S95_tests_ci to align the artifact contract and add contract tests.
+
+**Status**
+- `work/tasks/020_artifact_contract_impl.md` still marks this task blocked (output dir standardization not finalized), so I can’t proceed without that file being updated or explicit confirmation to treat it as unblocked.
+- I’m in a read‑only sandbox, so I can’t edit files or update `work/queue.json` from here.
+
+**Change Plan (once unblocked)**
+- Add shared artifact helpers in `src/utils/artifacts.py` (meta/config/metrics/predictions writers + hash helpers).
+- Update training outputs in `src/fp/train.py` and `src/gnn/train.py` to emit `model/model.ckpt`, `metrics.json`, and contract‑required meta keys (dataset_hash/config_hash/etc).
+- Update inference outputs in `src/fp/predict.py` and `src/gnn/predict.py` to emit `predictions.csv` with required columns and meta additions (model_version, run_id, dataset_hash).
+- Add contract tests in `tests/contract/` validating required files/keys/columns.
+
+**Implementation**
+- Not done (task blocked; read‑only environment).
+
+**Tests Added/Updated**
+- Not done (task blocked).
+
+**Verification Commands (planned)**
+- `pytest tests/contract -q`
+
+**Compatibility Impact (config/CLI/artifact)**
+- No changes applied yet.
+- Planned impact once unblocked: artifact filenames/layout will align to `docs/04_ARTIFACTS_AND_VERSIONING.md` (e.g., `metrics.json`, `model/model.ckpt`, `predictions.csv`), and meta will include required keys.
+
+**Queue Update**
+- Should set task 020 to `blocked` in `work/queue.json` (reason: output dir standardization unresolved in task file), but I can’t edit due to read‑only sandbox.
+
+If you want me to proceed, please either:
+1) Update `work/tasks/020_artifact_contract_impl.md` to remove the block, or confirm that 010/015 fully define output dir conventions, and  
+2) Allow write access so I can implement and update `work/queue.json`.

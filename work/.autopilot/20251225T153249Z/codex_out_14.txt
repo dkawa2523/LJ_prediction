@@ -1,0 +1,29 @@
+Using S90_artifacts_versioning + S95_tests_ci to align the artifact contract and contract tests.
+
+**Status**
+- Task 020 is blocked per `work/tasks/020_artifact_contract_impl.md` because run/output dir conventions are not finalized.
+- `work/queue.json` shows 010/015 done, but the task file is the source of truth; I need confirmation to proceed.
+- Environment is read-only, so I cannot edit files or update `work/queue.json`.
+
+**Change Plan (File-Level)**
+- `src/utils/artifacts.py`: add artifact save helpers and hash utilities for config/meta/metrics/model/predictions.
+- `scripts/train.py`: call artifact saver to write `config.yaml`, `meta.json`, `metrics.json`, `model.ckpt` (plus preprocess/featurizer state if present).
+- `scripts/predict.py`: save `predictions.csv` and write meta with `model_version`, `run_id`, `dataset_hash`, etc.
+- `tests/contract/test_artifacts_contract.py`: add contract checks for required files and `meta.json` keys.
+
+**Implementation (Diff)**
+- N/A — blocked and read-only.
+
+**Tests Added/Updated**
+- N/A — blocked.
+
+**Verification Command**
+- Once unblocked: `pytest tests/contract -k artifacts`
+
+**Compatibility Impact (Config/CLI/Artifact)**
+- None yet. Planned changes add required artifacts per `docs/04_ARTIFACTS_AND_VERSIONING.md` without CLI/config changes.
+
+**Queue Status**
+- Should update `work/queue.json` task 020 to `blocked` with the reason from the task file; I can’t edit it in read-only mode.
+
+Please confirm whether 010/015 are considered complete and whether I should proceed with Task 020 now. If yes, I’ll need write access to update files and `work/queue.json`.

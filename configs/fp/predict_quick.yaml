@@ -1,9 +1,14 @@
-model_artifact_dir: "runs/fp/quick_lgbm_morgan_v1"
-dataset_csv: "data/processed/quick/dataset_with_lj.csv"
+defaults:
+  - process: predict
+  - dataset: quick
+  - infer: fp_quick
+  - hydra: default
+  - _self_
 
-input:
-  mode: "cas"  # formula / cas
+model_artifact_dir: "runs/train/fp/quick_lgbm_morgan_v1"
+
+process:
+  backend: "fp"
 
 output:
-  out_dir: "runs/predict"
   exp_name: "fp_predict_quick"

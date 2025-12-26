@@ -1,41 +1,21 @@
-data:
-  dataset_csv: "data/processed/dataset_with_lj.csv"
-  indices_dir: "data/processed/indices"
-  sdf_dir: "data/raw/sdf_files"
-  target_col: "lj_epsilon_over_k_K"
-  cas_col: "CAS"
+defaults:
+  - process: train
+  - dataset: default
+  - task: lj_epsilon
+  - preprocess: none
+  - features: gnn_graph
+  - model: gnn_mpnn
+  - train: gnn_default
+  - eval: default
+  - hydra: default
+  - _self_
 
-featurizer:
-  node_features: ["atomic_num","degree","formal_charge","aromatic","num_h","in_ring"]
-  edge_features: ["bond_type","conjugated","aromatic"]
-  use_3d_pos: true
-  add_global_descriptors: ["MolWt","TPSA","MolLogP","HBD","HBA"]
+experiment:
+  name: "mpnn_desc_v1"
 
-model:
-  name: "mpnn"     # gcn / mpnn
-  hidden_dim: 64
-  num_layers: 4
-  dropout: 0.1
-  # Controls the hidden size of the edge MLP used by NNConv.
-  # Larger => slower/uses more memory. (Output size is fixed by hidden_dim.)
-  edge_mlp_hidden_dim: 64
-
-train:
-  epochs: 10
-  batch_size: 32
-  lr: 0.01
-  weight_decay: 1.0e-5
-  loss: "huber"
-  early_stopping:
-    patience: 20
-  seed: 42
-  device: "mps"
-
-ad:
-  tanimoto_warn_threshold: 0.5
-  top_k: 5
+process:
+  backend: "gnn"
 
 output:
-  run_dir: "runs/gnn"
+  run_dir: "runs/train/gnn"
   exp_name: "mpnn_desc_v1"
-  plots: true

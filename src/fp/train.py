@@ -1,120 +1,31 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import pickle
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
-from tqdm import tqdm
-
-from sklearn.impute import SimpleImputer
-from sklearn.preprocessing import StandardScaler
 
 from src.common.ad import applicability_domain
-from src.common.config import dump_yaml, load_yaml
+from src.common.config import dump_yaml, load_config
+from src.common.feature_pipeline import FingerprintFeaturePipeline, resolve_tabular_pipeline, save_feature_pipeline
+from src.common.meta import build_meta, save_meta
 from src.common.io import load_sdf_mol, read_csv, sdf_path_from_cas
-from src.common.metrics import regression_metrics
 from src.common.plots import save_parity_plot, save_residual_plot, save_hist
 from src.common.splitters import load_split_indices
 from src.common.utils import ensure_dir, get_logger, save_json, set_seed
-from src.fp.featurizer_fp import FPConfig, featurize_mol, morgan_bitvect
+from src.fp.feature_utils import hash_cfg
+from src.fp.featurizer_fp import morgan_bitvect
 from src.fp.models import get_model
+from src.tasks import resolve_task
+from src.utils.artifacts import compute_dataset_hash
+from src.utils.validate_config import validate_config
 
 
-def _hash_cfg(obj: Dict[str, Any]) -> str:
-    s = repr(obj).encode("utf-8")
-    return hashlib.sha256(s).hexdigest()[:12]
-
-
-def _build_features(
-    df: pd.DataFrame,
-    sdf_dir: Path,
-    cas_col: str,
-    fp_cfg: FPConfig,
-    cache_dir: Optional[Path],
-    cache_key: str,
-    logger,
-) -> Tuple[np.ndarray, List[Any], List[str], Dict[str, Any]]:
-    """Return X (N,D), ids (CAS), elements_list, meta.
-
-    Notes:
-      - Rows with missing/invalid SDF are returned as all-NaN feature rows.
-      - Descriptor NaNs are allowed; they will be imputed later.
-    """
-    ensure_dir(cache_dir) if cache_dir is not None else None
-    cache_path = None
-    meta_path = None
-    if cache_dir is not None:
-        cache_path = cache_dir / f"fp_features_{cache_key}.npz"
-        meta_path = cache_dir / f"fp_features_{cache_key}_meta.pkl"
-        if cache_path.exists() and meta_path.exists():
-            logger.info(f"Loading cached features: {cache_path}")
-            npz = np.load(cache_path, allow_pickle=True)
-            X = npz["X"]
-            ids = npz["ids"].tolist()
-            elements = npz["elements"].tolist()
-            with open(meta_path, "rb") as f:
-                meta = pickle.load(f)
-            return X, ids, elements, meta
-
-    ids = df[cas_col].astype(str).tolist()
-    elements = df.get("elements", pd.Series([""] * len(df))).astype(str).tolist()
-    X_list: List[np.ndarray] = []
-    meta_last: Dict[str, Any] = {}
-
-    logger.info("Featurizing molecules (fingerprint + optional descriptors) ...")
-    for cas in tqdm(ids, total=len(ids)):
-        mol = load_sdf_mol(sdf_path_from_cas(sdf_dir, cas))
-        if mol is None:
-            X_list.append(np.array([np.nan], dtype=float))
-            continue
-        x, meta = featurize_mol(mol, fp_cfg)
-        meta_last = meta
-        X_list.append(x)
-
-    # Determine feature dimension from first non-placeholder vector
-    dims = [x.shape[0] for x in X_list if x.ndim == 1 and x.shape[0] > 1]
-    if len(dims) == 0:
-        raise RuntimeError("No valid molecules could be featurized. Check sdf_dir and SDF files.")
-    dim = int(max(dims))
-    X = np.full((len(X_list), dim), np.nan, dtype=float)
-    for i, x in enumerate(X_list):
-        if x.ndim != 1:
-            continue
-        if x.shape[0] == 1 and np.isnan(x[0]):
-            continue  # placeholder
-        if x.shape[0] != dim:
-            x2 = np.full((dim,), np.nan, dtype=float)
-            n = min(dim, x.shape[0])
-            x2[:n] = x[:n]
-            x = x2
-        X[i] = x
-
-    meta_last["feature_dim"] = dim
-
-    if cache_path is not None:
-        logger.info(f"Saving feature cache: {cache_path}")
-        np.savez_compressed(
-            cache_path,
-            X=X,
-            ids=np.array(ids, dtype=object),
-            elements=np.array(elements, dtype=object),
-        )
-        with open(meta_path, "wb") as f:
-            pickle.dump(meta_last, f)
-
-    return X, ids, elements, meta_last
-
-
-def main() -> None:
-    ap = argparse.ArgumentParser(description="Train fingerprint-based regression model for LJ parameter.")
-    ap.add_argument("--config", required=True, help="Path to configs/fp/train.yaml")
-    args = ap.parse_args()
-
-    cfg = load_yaml(args.config)
+def run(cfg: Dict[str, Any]) -> Path:
+    validate_config(cfg)
     seed = int(cfg.get("train", {}).get("seed", 42))
     set_seed(seed)
 
@@ -122,14 +33,18 @@ def main() -> None:
     dataset_csv = Path(data_cfg.get("dataset_csv", "data/processed/dataset_with_lj.csv"))
     indices_dir = Path(data_cfg.get("indices_dir", "data/processed/indices"))
     sdf_dir = Path(data_cfg.get("sdf_dir", "data/raw/sdf_files"))
-    target_col = str(data_cfg.get("target_col", "lj_epsilon_over_k_K"))
+    task_spec = resolve_task(cfg)
+    target_col = task_spec.primary_target()
+    if target_col is None:
+        raise ValueError("No target column resolved from task/data config.")
     cas_col = str(data_cfg.get("cas_col", "CAS"))
     cache_dir = data_cfg.get("cache_dir", None)
     cache_dir = Path(cache_dir) if cache_dir else None
 
     out_cfg = cfg.get("output", {})
-    run_dir_root = Path(out_cfg.get("run_dir", "runs/fp"))
-    exp_name = str(out_cfg.get("exp_name", "fp_experiment"))
+    run_dir_root = Path(out_cfg.get("run_dir", "runs/train/fp"))
+    experiment_cfg = cfg.get("experiment", {})
+    exp_name = str(out_cfg.get("exp_name", experiment_cfg.get("name", "fp_experiment")))
     run_dir = ensure_dir(run_dir_root / exp_name)
     plots_dir = ensure_dir(run_dir / "plots")
 
@@ -141,6 +56,17 @@ def main() -> None:
         raise FileNotFoundError(f"indices_dir not found: {indices_dir}")
     if not sdf_dir.exists():
         raise FileNotFoundError(f"sdf_dir not found: {sdf_dir}")
+
+    dump_yaml(run_dir / "config.yaml", cfg)
+    dataset_hash = compute_dataset_hash(dataset_csv, indices_dir)
+    model_version = str(out_cfg.get("model_version", exp_name))
+    meta = build_meta(
+        process_name=str(cfg.get("process", {}).get("name", "train")),
+        cfg=cfg,
+        dataset_hash=dataset_hash,
+        model_version=model_version,
+    )
+    save_meta(run_dir, meta)
 
     df = read_csv(dataset_csv)
     indices = load_split_indices(indices_dir)
@@ -154,29 +80,18 @@ def main() -> None:
     logger.info(f"Split sizes: train={len(df_train)}, val={len(df_val)}, test={len(df_test)}")
 
     feat_cfg = cfg.get("featurizer", {})
-    fp_cfg = FPConfig(
-        fingerprint=str(feat_cfg.get("fingerprint", "morgan")),
-        morgan_radius=int(feat_cfg.get("morgan_radius", 2)),
-        n_bits=int(feat_cfg.get("n_bits", 2048)),
-        use_counts=bool(feat_cfg.get("use_counts", False)),
-        add_descriptors=feat_cfg.get("add_descriptors", None),
-    )
-
-    preprocess_cfg = cfg.get("preprocess", {})
-    standardize = bool(preprocess_cfg.get("standardize", False))
-    impute_strategy = str(preprocess_cfg.get("impute_nan", "mean"))
+    pipeline = resolve_tabular_pipeline(cfg)
 
     model_cfg = cfg.get("model", {})
     model_name = str(model_cfg.get("name", "lightgbm"))
     model_params = model_cfg.get("params", {}) or {}
 
     # Build features for all rows once (for caching + AD)
-    cache_key = _hash_cfg({"featurizer": feat_cfg, "dataset": str(dataset_csv)})
-    X_all, ids_all, elements_all, feat_meta = _build_features(
+    cache_key = hash_cfg({"featurizer": feat_cfg, "dataset": str(dataset_csv)})
+    X_all, _, _, _ = pipeline.build_features(
         df=df,
         sdf_dir=sdf_dir,
         cas_col=cas_col,
-        fp_cfg=fp_cfg,
         cache_dir=cache_dir,
         cache_key=cache_key,
         logger=logger,
@@ -210,18 +125,11 @@ def main() -> None:
     if len(y_train) < 50:
         logger.warning("Training set is very small; consider loosening selectors or split strategy.")
 
-    # Impute NaNs (descriptors may yield NaN)
-    imputer = SimpleImputer(strategy=impute_strategy)
-    X_train = imputer.fit_transform(X_train)
-    X_val = imputer.transform(X_val)
-    X_test = imputer.transform(X_test)
-
-    scaler = None
-    if standardize:
-        scaler = StandardScaler()
-        X_train = scaler.fit_transform(X_train)
-        X_val = scaler.transform(X_val)
-        X_test = scaler.transform(X_test)
+    # Impute NaNs (descriptors may yield NaN) + optional standardization
+    pipeline.fit(X_train)
+    X_train = pipeline.transform_features(X_train)
+    X_val = pipeline.transform_features(X_val)
+    X_test = pipeline.transform_features(X_test)
 
     model = get_model(model_name, model_params)
     logger.info(f"Training model: {model_name} with params={model_params}")
@@ -238,8 +146,8 @@ def main() -> None:
     pred_val = model.predict(X_val)
     pred_test = model.predict(X_test)
 
-    metrics_val = regression_metrics(y_val, pred_val)
-    metrics_test = regression_metrics(y_test, pred_test)
+    metrics_val = task_spec.metrics_fn(y_val, pred_val)
+    metrics_test = task_spec.metrics_fn(y_test, pred_test)
     logger.info(f"Val metrics: {metrics_val}")
     logger.info(f"Test metrics: {metrics_test}")
 
@@ -293,21 +201,27 @@ def main() -> None:
 
     # Save artifacts
     artifacts_dir = ensure_dir(run_dir / "artifacts")
+    save_feature_pipeline(pipeline, artifacts_dir)
+    pipeline.save_preprocess_artifacts(artifacts_dir)
     model_path = artifacts_dir / "model.pkl"
     with open(model_path, "wb") as f:
         pickle.dump(model, f)
 
-    with open(artifacts_dir / "imputer.pkl", "wb") as f:
-        pickle.dump(imputer, f)
-    if scaler is not None:
-        with open(artifacts_dir / "scaler.pkl", "wb") as f:
-            pickle.dump(scaler, f)
-
     # AD artifacts: training fingerprints and training elements
     # Compute Morgan bitvect for all training mols in ORIGINAL dataset order to simplify indexing.
     # We'll store only training set for speed.
+    ad_cfg = cfg.get("ad", {}) or {}
+    if isinstance(pipeline, FingerprintFeaturePipeline):
+        ad_radius = pipeline.fp_cfg.morgan_radius
+        ad_n_bits = pipeline.fp_cfg.n_bits
+    else:
+        ad_radius = int(ad_cfg.get("morgan_radius", 2))
+        ad_n_bits = int(ad_cfg.get("n_bits", 2048))
+
     train_mols = [load_sdf_mol(sdf_path_from_cas(sdf_dir, cas)) for cas in ids_train]
-    train_fps = [morgan_bitvect(m, radius=fp_cfg.morgan_radius, n_bits=fp_cfg.n_bits) if m is not None else None for m in train_mols]
+    train_fps = [
+        morgan_bitvect(m, radius=ad_radius, n_bits=ad_n_bits) if m is not None else None for m in train_mols
+    ]
     # Filter None
     train_pairs = [(fp, cas) for fp, cas in zip(train_fps, ids_train) if fp is not None]
     train_fps = [p[0] for p in train_pairs]
@@ -321,12 +235,12 @@ def main() -> None:
     ad_artifact = {
         "training_elements": training_elements,
         "heavy_atom_range": [heavy_min, heavy_max],
-        "morgan_radius": fp_cfg.morgan_radius,
-        "n_bits": fp_cfg.n_bits,
+        "morgan_radius": ad_radius,
+        "n_bits": ad_n_bits,
         "train_ids": train_ids_for_ad,
         "train_fps": train_fps,  # RDKit ExplicitBitVect list (pickleable)
-        "tanimoto_warn_threshold": float(cfg.get("ad", {}).get("tanimoto_warn_threshold", 0.5)),
-        "top_k": int(cfg.get("ad", {}).get("top_k", 5)),
+        "tanimoto_warn_threshold": float(ad_cfg.get("tanimoto_warn_threshold", 0.5)),
+        "top_k": int(ad_cfg.get("top_k", 5)),
     }
     with open(artifacts_dir / "ad.pkl", "wb") as f:
         pickle.dump(ad_artifact, f)
@@ -334,10 +248,45 @@ def main() -> None:
     # Save metrics + config snapshot
     save_json(run_dir / "metrics_val.json", metrics_val)
     save_json(run_dir / "metrics_test.json", metrics_test)
+    save_json(
+        run_dir / "metrics.json",
+        {
+            "val": metrics_val,
+            "test": metrics_test,
+            "n_train": int(len(y_train)),
+            "n_val": int(len(y_val)),
+            "n_test": int(len(y_test)),
+            "seed": int(seed),
+        },
+    )
+    model_dir = ensure_dir(run_dir / "model")
+    with open(model_dir / "model.ckpt", "wb") as f:
+        pickle.dump(model, f)
+    with open(model_dir / "preprocess.pkl", "wb") as f:
+        pickle.dump(
+            {
+                "imputer": pipeline.imputer,
+                "scaler": pipeline.scaler,
+                "standardize": pipeline.standardize,
+                "impute_strategy": pipeline.impute_strategy,
+            },
+            f,
+        )
+    save_json(model_dir / "featurizer_state.json", pipeline.featurizer_state())
     dump_yaml(run_dir / "config_snapshot.yaml", cfg)
 
     logger.info(f"Saved model to {model_path}")
     logger.info("Done.")
+    return run_dir
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(description="Train fingerprint-based regression model for LJ parameter.")
+    ap.add_argument("--config", required=True, help="Path to configs/fp/train.yaml")
+    args = ap.parse_args()
+
+    cfg = load_config(args.config)
+    run(cfg)
 
 
 if __name__ == "__main__":

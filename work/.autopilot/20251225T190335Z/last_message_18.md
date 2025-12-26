@@ -1,0 +1,27 @@
+Using S90_artifacts_versioning and S95_tests_ci because this task is artifact-contract implementation plus contract tests.  
+**Status**
+- Blocked per `work/tasks/020_artifact_contract_impl.md`: output/run dir standardization is not finalized, so artifact destinations are undefined (task file is the source of truth).
+- `work/queue.json` shows 010/015 done, but the task file still declares blocked; please confirm whether to unblock/update before I implement.
+
+**1) Change Plan**
+- Blocked; no edits applied.
+- If unblocked, plan is to add `src/utils/artifacts.py`, update `scripts/train.py`, update `scripts/predict.py`, and add `tests/contract/test_artifacts.py`.
+
+**2) Implementation (Diff)**
+- None; task is blocked.
+
+**3) Tests Added/Updated**
+- None; task is blocked.
+
+**4) Verification Commands**
+- Not run (blocked); after unblock, likely `pytest -q tests/contract`.
+
+**5) Compatibility Impact (config/CLI/artifact)**
+- None; no changes made.
+
+**6) Queue Status Update**
+- Not updated due to read-only sandbox; please set `work/queue.json` status for task 020 to `blocked` with the task-file reason, or unblock the task file if ready.
+
+Next steps (pick one):
+1) Confirm that task 020 is unblocked and update `work/tasks/020_artifact_contract_impl.md` accordingly.  
+2) Re-run with write access so I can implement changes and update `work/queue.json`.

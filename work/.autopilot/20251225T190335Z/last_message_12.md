@@ -1,0 +1,32 @@
+Using S90_artifacts_versioning → S95_tests_ci because this task is artifact contract + contract tests.
+
+**Status**
+- `work/tasks/020_artifact_contract_impl.md` still marks the task blocked (run dir standardization), so per the task rules I did not implement changes.
+- Sandbox is read-only, so I can’t update files like `work/queue.json` even to mark the task blocked.
+
+**Change Plan (file-level, once unblocked)**
+- `src/utils/artifacts.py`: add helpers to compute `config_hash`/`dataset_hash` and write contract outputs (`config.yaml`, `meta.json`, `metrics.json`, `model.ckpt`, `predictions.csv`).
+- `scripts/train.py`: call the artifact helper after backend training to normalize outputs into the contract layout under the run dir.
+- `scripts/predict.py`: call the artifact helper to emit `predictions.csv` and meta (including `model_version`, `run_id`, `upstream_artifacts`).
+- `tests/contract/test_artifacts_contract.py`: add contract tests for required files/keys/columns.
+
+**Implementation (diff)**
+- Not performed (blocked + read-only sandbox).
+
+**Tests**
+- Not added.
+
+**Verification**
+- Not run.
+
+**Compatibility Impact**
+- None (no changes).
+
+**Queue Update**
+- Not updated due to read-only sandbox; `work/queue.json` should set task `020` to `blocked` with the reason from `work/tasks/020_artifact_contract_impl.md`.
+
+Queue already shows 010/015 done; should I proceed with unblocking task 020 and implement now (requires write access), or keep it blocked until you update the task file?
+
+If you want me to proceed:
+1) Unblock task 020 in `work/tasks/020_artifact_contract_impl.md` and `work/queue.json`.
+2) Rerun with write access so I can apply the code/test changes.

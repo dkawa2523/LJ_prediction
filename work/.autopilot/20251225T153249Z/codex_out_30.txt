@@ -1,0 +1,31 @@
+**Status**
+- Using skills S90_artifacts_versioning (artifact contract alignment) and S95_tests_ci (contract test guidance).
+- Task `work/tasks/020_artifact_contract_impl.md` is explicitly blocked (010/015 output-dir standardization not confirmed), so I did not modify code.
+- Sandbox is read-only, so I cannot update files like `work/queue.json` or implement changes.
+
+**Change Plan**
+- `src/utils/artifacts.py`: add artifact save helpers for `config.yaml`, `meta.json`, `metrics.json`, `model.ckpt`, `predictions.csv`.
+- `scripts/train.py`: call artifact saver at end of training.
+- `scripts/predict.py`: write `predictions.csv` and `meta.json` with `model_version`.
+- `tests/contract/test_artifacts_contract.py`: assert required files/keys per `docs/04_ARTIFACTS_AND_VERSIONING.md`.
+
+**Implementation**
+- No code changes (blocked by task file).
+
+**Tests**
+- None added/updated (blocked).
+
+**Verification**
+- Not run. Once unblocked, likely: `pytest -q` or `pytest -q tests/contract` after adding contract tests.
+
+**Compatibility**
+- Expected impacts once implemented: new required artifact outputs under run directories; no CLI changes unless an output path config needs to be added.
+
+**Queue Update**
+- Task file says blocked; `work/queue.json` should be set to `blocked` with the same reason. I can’t update it in read-only mode.
+
+Open question to proceed: the task file says blocked, but `work/queue.json` shows 010/015 as done. Has the output dir naming/standardization been finalized? If yes, please update `work/tasks/020_artifact_contract_impl.md` to clear the block (or confirm the agreed artifact output path), and re-run with write access so I can implement and update `work/queue.json`.
+
+Next steps you can choose:
+1) Confirm/record the final run dir/artifact path contract and unblock the task.
+2) Re-run with write access so I can implement and update `work/queue.json`.

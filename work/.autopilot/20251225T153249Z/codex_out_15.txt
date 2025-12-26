@@ -1,0 +1,29 @@
+Using skills: S90_artifacts_versioning + S95_tests_ci (artifact contract implementation + contract tests).
+
+Task 020 is still marked blocked in `work/tasks/020_artifact_contract_impl.md`, so I’m not implementing yet. Note: `work/queue.json` shows 010/015 done, which conflicts with the block note; please confirm which is authoritative before I proceed.
+
+**変更計画**
+- `src/utils/artifacts.py`: add shared artifact save/load helpers (config/meta/metrics/predictions/model paths + hashes).
+- `scripts/train.py`: write `config.yaml`, `meta.json`, `metrics.json`, `model.ckpt`, `model/` subtree.
+- `scripts/predict.py`: write `predictions.csv` and `meta.json` with `model_version`/hashes.
+- `tests/contract/test_artifact_contract.py`: assert required files + required `meta.json` keys.
+
+**実装（差分）**
+- 変更なし（blocked + read-only sandboxのため編集不可）
+
+**追加/更新したテスト**
+- なし（blocked）
+
+**検証コマンド**
+- 未実行（blocked）
+
+**互換性影響（config/CLI/artifact）**
+- なし（未変更）
+
+**work/queue.json**
+- 本来は `id: "020"` を `blocked` に更新すべきですが、read-only のため更新不可。  
+  更新する場合は `work/queue.json` の当該タスクの `status` を `blocked` に変更し、`updated_at` を更新してください。
+
+確認したいこと:
+1) 010/015 が完了している前提で、このタスクをブロック解除して続行してよいですか  
+2) 続行してよい場合、書き込み可能な状態で再実行して進めてよいですか

@@ -14,13 +14,24 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from src.common.config import dump_yaml, load_yaml
+from src.common.config import dump_yaml, load_config
 from src.common.chemistry import elements_string, n_elements, parse_formula
 from src.common.dataset_selectors import SelectorContext, apply_selectors
 from src.common.io import load_sdf_mol, read_csv, sdf_path_from_cas, write_csv
 from src.common.lj import compute_lj
-from src.common.splitters import random_split, scaffold_split, save_split_indices
+from src.common.splitters import (
+    build_group_map,
+    group_split,
+    random_split,
+    save_split_indices,
+    save_split_json,
+    scaffold_split,
+    validate_group_leakage,
+    validate_scaffold_split,
+    validate_split_indices,
+)
 from src.common.utils import get_logger, set_seed
+from src.utils.validate_config import validate_config
 
 
 def _needs_mols(selectors: List[Dict[str, Any]]) -> bool:
@@ -38,7 +49,8 @@ def main() -> None:
     ap.add_argument("--limit", type=int, default=None, help="Debug: limit number of rows loaded from raw CSV.")
     args = ap.parse_args()
 
-    cfg = load_yaml(args.config)
+    cfg = load_config(args.config)
+    validate_config(cfg)
     paths = cfg.get("paths", {})
     raw_csv = Path(paths.get("raw_csv", "data/raw/tc_pc_tb_pubchem.csv"))
     sdf_dir = Path(paths.get("sdf_dir", "data/raw/sdf_files"))
@@ -169,7 +181,7 @@ def main() -> None:
     # Split
     split_cfg = cfg.get("split", {})
     split_method = str(split_cfg.get("method", "random")).lower()
-    ratios = split_cfg.get("ratios", [0.8, 0.1, 0.1])
+    ratios = split_cfg.get("fractions", split_cfg.get("ratios", [0.8, 0.1, 0.1]))
     ratios = [float(x) for x in ratios]
     split_seed = int(split_cfg.get("seed", seed))
 
@@ -177,10 +189,26 @@ def main() -> None:
         indices = random_split(df, ratios=ratios, seed=split_seed)
     elif split_method == "scaffold":
         indices = scaffold_split(df, sdf_dir=sdf_dir, cas_col=cas_col, ratios=ratios, seed=split_seed)
+        validate_scaffold_split(df, sdf_dir=sdf_dir, cas_col=cas_col, indices=indices)
+    elif split_method == "group":
+        group_key = split_cfg.get("group_key")
+        if not group_key:
+            raise ValueError("split.method=group requires split.group_key")
+        group_col = cols.get(str(group_key), str(group_key))
+        if group_col not in df.columns:
+            raise ValueError(f"split.group_key '{group_key}' resolved to '{group_col}' not in dataset columns")
+        indices = group_split(df, group_col=group_col, ratios=ratios, seed=split_seed)
+        group_map = build_group_map(df, group_col=group_col)
+        validate_group_leakage(indices, group_map, label=f"group:{group_col}")
     else:
         raise ValueError(f"Unknown split.method: {split_method}")
 
+    validate_split_indices(indices)
     save_split_indices(indices, out_indices_dir)
+    split_meta = {"method": split_method, "seed": split_seed, "fractions": ratios}
+    if split_method == "group":
+        split_meta["group_key"] = str(split_cfg.get("group_key"))
+    save_split_json(indices, out_indices_dir / "split.json", metadata=split_meta)
     logger.info(f"Saved split indices to {out_indices_dir}")
 
     # Save snapshot of config used

@@ -1,42 +1,21 @@
-# Quick config for GNN smoke tests (small/fast settings).
-data:
-  dataset_csv: "data/processed/quick/dataset_with_lj.csv"
-  indices_dir: "data/processed/quick/indices"
-  sdf_dir: "data/raw/sdf_files"
-  target_col: "lj_epsilon_over_k_K"
-  cas_col: "CAS"
+defaults:
+  - process: train
+  - dataset: quick
+  - task: lj_epsilon
+  - preprocess: none
+  - features: gnn_graph_quick
+  - model: gnn_gcn_quick
+  - train: gnn_quick
+  - eval: quick
+  - hydra: default
+  - _self_
 
-featurizer:
-  node_features: ["atomic_num","degree","formal_charge","aromatic","num_h","in_ring"]
-  edge_features: ["bond_type","conjugated","aromatic"]
-  use_3d_pos: false
-  add_global_descriptors: ["MolWt","TPSA","MolLogP"]
+experiment:
+  name: "quick_gcn_v1"
 
-model:
-  name: "gcn"     # gcn / mpnn
-  hidden_dim: 64
-  num_layers: 3
-  dropout: 0.1
-
-train:
-  epochs: 3
-  batch_size: 32
-  lr: 0.001
-  weight_decay: 1.0e-5
-  loss: "huber"
-  early_stopping:
-    patience: 2
-  seed: 42
-  log_interval_sec: 5
-  progress_bar: true
-  max_batches_per_epoch: 10
-
-ad:
-  tanimoto_warn_threshold: 0.5
-  top_k: 5
+process:
+  backend: "gnn"
 
 output:
-  run_dir: "runs/gnn"
+  run_dir: "runs/train/gnn"
   exp_name: "quick_gcn_v1"
-  plots: false
-

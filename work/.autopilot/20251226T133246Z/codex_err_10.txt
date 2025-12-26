@@ -1,0 +1,1941 @@
+OpenAI Codex v0.77.0 (research preview)
+--------
+workdir: /Users/kawahito/Desktop/LJ_prediction
+model: gpt-5.2-codex
+provider: openai
+approval: never
+sandbox: workspace-write [workdir, /tmp, $TMPDIR]
+reasoning effort: xhigh
+reasoning summaries: auto
+session id: 019b5c79-dedb-79f1-8743-12f6105d071b
+--------
+user
+# ===== SESSION CONTEXT =====
+# Codex Session Context（毎回貼る短文）
+
+- このrepoは「化学構造（SDF/CSV）→ 物性予測」を行う CLI/Hydra 基盤。
+- 不変条件は docs/00_INVARIANTS.md が唯一の正。
+- 今回の作業範囲・要件は work/tasks/<TASK>.md が唯一の正。
+- 学習と推論の特徴量/前処理は必ず一致させる（skew禁止）。
+- 成果物（artifact）は docs/04_ARTIFACTS_AND_VERSIONING.md を守る。
+- 破壊的変更が必要なら work/rfc → docs/adr を先に作る（勝手に壊さない）。
+- すべての処理は Process（処理単位）としてHydraで管理し、単独実行できる形を守る。
+- 将来ClearML Task化を想定し、各Processが artifact を明確に出す設計にする（実装は今しない）。
+
+# ===== AUTOPILOT MODE (non-interactive) =====
+あなたは自動実行ループの中で動いています。**停止しないための規約**として次を厳守してください：
+
+【禁止】
+- ユーザーへの確認・質問・承認依頼（"確認してください" / "進めてよいですか" / "Approve" 等）は一切しない。
+- "今回は未実装" / "差分なし" のまま終了しない（必ず前進する）。
+
+【single source of truth】
+- タスクの status の唯一の真実は work/queue.json。task.md の 'Blocked' 記述は参考情報。
+  - queue が todo/in_progress なら実装を進める（task.md 側の Blocked を理由に止めない）。
+  - queue が blocked なら blocked-handling を行う（reason/unblock_condition/next_action を整備し、解除子タスクを起票）。
+
+【stale Blocked の扱い】
+- task.md に '## Blocked' が残っていても queue が todo/in_progress の場合、それは **stale**。
+  - task.md を更新し、Blocked を Notes/History に移す or 解除した上で実装を進める。
+
+【書き込み権限】
+- **書き込みは可能**な前提。work/queue.json 更新を含む必要な変更は実施する。
+  - もし実際にツール/環境エラーで書き込めない場合：
+    1) エラーメッセージを短く引用
+    2) 最小の対処（sandbox/approval/flags 見直し、権限確認）を提示
+    3) タスクを blocked にして解除子タスクを起票（子に unblocks を付与）
+    ※それでも『確認してください』は書かない。
+
+【必ずどれかを実施（Decision Protocol）】
+A) 実装を進める → テスト/検証 → work/queue.json を done に更新
+B) 進められない → work/queue.json を blocked に更新し、解除子タスク（unblocks付き）を作成
+C) 依存/状態がズレている → work/queue.json と task.md を修正して整合させた上で A へ
+
+# ===== SELECTED TASK =====
+- id: 090
+- title: CI/テスト整備
+- priority: P2
+- status: in_progress
+- path: work/tasks/090_ci_tests.md
+
+# ===== CONTRACTS TO FOLLOW (open & read) =====
+- docs/06_TEST_POLICY.md
+- docs/00_INVARIANTS.md
+
+# ===== SKILLS TO FOLLOW (open & follow) =====
+- agentskills/skills/S95_tests_ci.md
+
+
+# ===== TASK FILE (single source of truth for *intent*) =====
+# Task 090 (P2): CI/テスト整備
+
+## 目的
+- 何十回の改修でも壊れないように、自動テストとlintを入れる
+
+## Plan
+1) `pytest` の導入と最小テスト追加
+2) smoke config（quick）で train/predict が通る integration test
+3) GitHub Actions（任意）で test を回す
+
+## Acceptance Criteria
+- [ ] `pytest -q` が通る
+- [ ] integration smoke が通る
+
+# ===== OUTPUT REQUIREMENTS (mandatory) =====
+1) 変更計画（ファイル単位）
+2) 実装（差分が分かるように）
+3) 追加/更新したテスト
+4) 検証コマンド
+5) 互換性影響（config/CLI/artifact）
+6) タスク完了時：work/queue.json の status を done に更新（満たせない場合は blocked と理由）
+
+
+mcp: context7 starting
+mcp: context7 ready
+mcp startup: ready: context7
+
+thinking
+**Reading test instructions**
+exec
+/bin/zsh -lc ls in /Users/kawahito/Desktop/LJ_prediction succeeded in 256ms:
+README.md
+agentskills
+codex
+configs
+data
+docs
+learning_curve_val.png
+objective.md
+parity_test.png
+parity_val.png
+requirements.txt
+residual_test.png
+residual_val.png
+runs
+scripts
+src
+tests
+tools
+work
+y_train_hist.png
+
+thinking
+**Reading skill file**
+exec
+/bin/zsh -lc 'cat agentskills/skills/S95_tests_ci.md' in /Users/kawahito/Desktop/LJ_prediction succeeded in 269ms:
+# S95 Tests & CI
+
+## Purpose
+pytest + smoke + contract test を整備し、改修で壊れないようにする。
+
+## Allowed Changes
+- tests/**
+- pyproject.toml（任意）
+- .github/workflows/**（任意）
+
+## Pitfalls
+- smoke が重くなりすぎる
+- 乱数により flaky になる
+
+thinking
+**Opening documentation files**
+exec
+/bin/zsh -lc 'cat docs/06_TEST_POLICY.md' in /Users/kawahito/Desktop/LJ_prediction succeeded in 278ms:
+# Test Policy（テスト方針）
+
+このドキュメントは「何十回の改修で壊れない」ためのテスト戦略です。
+
+## 1. テストの種類
+### 1.1 Unit
+- 小さな関数/クラス（特徴量、メトリクスなど）
+- 実行が速い（数秒以内）
+
+### 1.2 Integration（smoke）
+- CLI で学習/推論が最小データで完走する
+- 成果物（artifact）が契約どおり出る
+
+### 1.3 Contract（ゴールデン）
+- `predictions.csv` の列や `meta.json` のキーが壊れていないか
+- config validation が期待通り落ちるか（無効組合せの検出）
+
+## 2. 最低ライン（PRの受け入れ条件）
+- 新機能/修正には **最低1つ** テストを追加する
+- `pytest -q` が通ること
+
+thinking
+**Reviewing invariants**
+exec
+/bin/zsh -lc 'cat docs/00_INVARIANTS.md' in /Users/kawahito/Desktop/LJ_prediction succeeded in 283ms:
+# Invariants（不変条件）
+
+このドキュメントは **開発中に変えてはいけない契約（Codexも遵守）** です。  
+迷ったらここへ戻り、ここに書かれていない“勝手な最適化”をしないでください。
+
+---
+
+## 0. 基本目的（この基盤のゴール）
+- **入力**: 化学構造（主に **CSV + SDF**。将来もこの形式を軸にする）
+- **出力**: 物性（LJパラメータに限らず、**同じCSV/SDF形式のまま目的変数を差し替える**）
+- **操作**: **CLI**（**Hydra**で設定管理）
+- **要求**:
+  - 前処理・特徴量化・学習・評価・推論・可視化を **拡張しやすい**
+  - モデル/特徴量の手法が複数あり、**選択して実行・比較評価しやすい**
+
+---
+
+## 1. もっとも重要な不変条件（破るなら RFC→ADR→更新）
+
+### 1.1 「処理単位（Process）」が第一級（最重要）
+
+thinking
+**Checking for task file**
+exec
+/bin/zsh -lc 'cat work/tasks/090_ci_tests.md' in /Users/kawahito/Desktop/LJ_prediction succeeded in 271ms:
+# Task 090 (P2): CI/テスト整備
+
+## 目的
+- 何十回の改修でも壊れないように、自動テストとlintを入れる
+
+## Plan
+1) `pytest` の導入と最小テスト追加
+2) smoke config（quick）で train/predict が通る integration test
+3) GitHub Actions（任意）で test を回す
+
+## Acceptance Criteria
+- [ ] `pytest -q` が通る
+- [ ] integration smoke が通る
+
+thinking
+**Identifying required configuration file**
+exec
+/bin/zsh -lc 'cat work/queue.json' in /Users/kawahito/Desktop/LJ_prediction succeeded in 264ms:
+{
+  "version": 1,
+  "updated_at": "2025-12-26T21:04:09.263176Z",
+  "policy": {
+    "priority_order": [
+      "P0",
+      "P1",
+      "P2",
+      "P3"
+    ],
+    "status_order": [
+      "todo",
+      "in_progress",
+      "blocked",
+      "done"
+    ],
+    "auto_set_in_progress_on_next": true
+  },
+  "tasks": [
+    {
+
+thinking
+**Preparing to implement tests**
+exec
+/bin/zsh -lc 'ls tests' in /Users/kawahito/Desktop/LJ_prediction succeeded in 267ms:
+__pycache__
+conftest.py
+contract
+fixtures
+test_audit_dataset.py
+test_config_loader.py
+test_data_collection.py
+test_feature_pipeline.py
+test_fixture_dataset.py
+test_leaderboard.py
+test_splitters.py
+test_tasks.py
+
+thinking
+**Checking test setup and dependencies**
+exec
+/bin/zsh -lc "sed -n '1,200p' tests/conftest.py" in /Users/kawahito/Desktop/LJ_prediction succeeded in 270ms:
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+thinking
+**Checking test suite**
+exec
+/bin/zsh -lc "sed -n '1,200p' tests/test_tasks.py" in /Users/kawahito/Desktop/LJ_prediction succeeded in 252ms:
+from __future__ import annotations
+
+from src.tasks import resolve_target_columns, resolve_task
+
+
+def test_resolve_target_columns_priority() -> None:
+    cfg = {
+        "task": {"target_columns": ["a"], "target_col": "b"},
+        "data": {"target_col": "c"},
+    }
+    assert resolve_target_columns(cfg) == ["a"]
+
+
+def test_resolve_task_metrics_filtered() -> None:
+    cfg = {"task": {"target_columns": ["y"], "metrics": ["mae"]}}
+    task = resolve_task(cfg)
+    metrics = task.metrics_fn([1.0, 2.0], [1.0, 3.0])
+    assert set(metrics.keys()) == {"mae"}
+
+
+
+thinking
+**Checking integration and contract tests**
+exec
+/bin/zsh -lc 'ls tests/contract' in /Users/kawahito/Desktop/LJ_prediction succeeded in 269ms:
+__pycache__
+test_artifacts_contract.py
+exec
+/bin/zsh -lc "sed -n '1,200p' tests/contract/test_artifacts_contract.py" in /Users/kawahito/Desktop/LJ_prediction succeeded in 270ms:
+from __future__ import annotations
+
+from pathlib import Path
+
+from src.utils.artifacts import (
+    REQUIRED_META_KEYS,
+    build_meta,
+    compute_config_hash,
+    compute_dataset_hash,
+    save_meta,
+    validate_evaluate_artifacts,
+    validate_predict_artifacts,
+    validate_train_artifacts,
+)
+
+
+def _write_indices(indices_dir: Path) -> None:
+    indices_dir.mkdir(parents=True, exist_ok=True)
+    (indices_dir / "train.txt").write_text("0\n", encoding="utf-8")
+    (indices_dir / "val.txt").write_text("0\n", encoding="utf-8")
+
+thinking
+**Checking test fixtures**
+exec
+/bin/zsh -lc 'ls tests/fixtures' in /Users/kawahito/Desktop/LJ_prediction succeeded in 265ms:
+data
+exec
+/bin/zsh -lc 'ls tests/fixtures/data' in /Users/kawahito/Desktop/LJ_prediction succeeded in 284ms:
+processed
+raw
+exec
+/bin/zsh -lc 'find tests/fixtures/data -maxdepth 3 -type f' in /Users/kawahito/Desktop/LJ_prediction succeeded in 275ms:
+tests/fixtures/data/processed/indices/train.txt
+tests/fixtures/data/processed/indices/test.txt
+tests/fixtures/data/processed/indices/val.txt
+tests/fixtures/data/processed/dataset_with_lj.csv
+tests/fixtures/data/processed/dataset_config_snapshot.yaml
+tests/fixtures/data/processed/build_dataset.log
+tests/fixtures/data/raw/sdf_files/74-85-1.sdf
+tests/fixtures/data/raw/sdf_files/74-98-6.sdf
+tests/fixtures/data/raw/sdf_files/110-82-7.sdf
+tests/fixtures/data/raw/sdf_files/124-38-9.sdf
+tests/fixtures/data/raw/sdf_files/67-64-1.sdf
+tests/fixtures/data/raw/sdf_files/64-17-5.sdf
+tests/fixtures/data/raw/tc_pc_tb_fixture.csv
+
+thinking
+**Examining test coverage and CLI scripts**
+exec
+/bin/zsh -lc 'ls src' in /Users/kawahito/Desktop/LJ_prediction succeeded in 280ms:
+__init__.py
+__pycache__
+common
+data
+data_collection
+fp
+gnn
+tasks
+utils
+
+thinking
+**Searching for CLI entrypoint**
+exec
+/bin/zsh -lc 'rg -n "@hydra|hydra.main|hydra" -S src scripts tools' in /Users/kawahito/Desktop/LJ_prediction succeeded in 295ms:
+src/common/chemistry.py:26:      - Dot/hydrate separators: CuSO4·5H2O or CuSO4.5H2O
+src/common/chemistry.py:38:    # Normalize hydrate separators
+
+thinking
+**Checking scripts folder for entrypoints**
+exec
+/bin/zsh -lc 'ls scripts' in /Users/kawahito/Desktop/LJ_prediction succeeded in 269ms:
+audit_dataset.py
+build_dataset.py
+collect_data.py
+evaluate.py
+leaderboard.py
+predict.py
+train.py
+visualize.py
+
+thinking
+**Inspecting hydra usage**
+exec
+/bin/zsh -lc "sed -n '1,200p' scripts/train.py" in /Users/kawahito/Desktop/LJ_prediction succeeded in 269ms:
+from __future__ import annotations
+
+import argparse
+import sys
+from pathlib import Path
+from typing import Any, Dict
+
+# Allow running as `python scripts/train.py ...` without installing the package.
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from src.common.config import load_config
+from src.fp import train as fp_train
+from src.gnn import train as gnn_train
+
+
+_FP_MODELS = {"lightgbm", "lgbm", "rf", "catboost", "gpr"}
+_GNN_MODELS = {"gcn", "gin", "mpnn"}
+
+
+thinking
+**Checking script entrypoints and config**
+exec
+/bin/zsh -lc "sed -n '1,200p' src/common/config.py" in /Users/kawahito/Desktop/LJ_prediction succeeded in 267ms:
+from __future__ import annotations
+
+from copy import deepcopy
+from pathlib import Path
+from typing import Any, Dict, Iterable
+
+import yaml
+
+
+class ConfigError(ValueError):
+    pass
+
+
+def load_yaml(path: str | Path) -> Dict[str, Any]:
+    path = Path(path)
+    if not path.exists():
+        raise ConfigError(f"Config file not found: {path}")
+    with path.open("r", encoding="utf-8") as f:
+        cfg = yaml.safe_load(f)
+    if cfg is None:
+
+thinking
+**Checking config system and inputs**
+exec
+/bin/zsh -lc "sed -n '1,200p' scripts/predict.py" in /Users/kawahito/Desktop/LJ_prediction succeeded in 274ms:
+from __future__ import annotations
+
+import argparse
+import sys
+from pathlib import Path
+from typing import Any, Dict
+
+# Allow running as `python scripts/predict.py ...` without installing the package.
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from src.common.config import load_config
+from src.fp import predict as fp_predict
+from src.gnn import predict as gnn_predict
+
+
+_FP_MODELS = {"lightgbm", "lgbm", "rf", "catboost", "gpr"}
+_GNN_MODELS = {"gcn", "gin", "mpnn"}
+
+
+thinking
+**Checking for quick smoke config**
+exec
+/bin/zsh -lc 'find configs -maxdepth 3 -type f | sort' in /Users/kawahito/Desktop/LJ_prediction succeeded in 277ms:
+configs/audit/default.yaml
+configs/audit_dataset.yaml
+configs/audit_dataset_fixture.yaml
+configs/audit_dataset_quick.yaml
+configs/collect_data.yaml
+configs/config.yaml
+configs/config_quick.yaml
+configs/data_collection/default.yaml
+configs/data_source/dummy.yaml
+configs/dataset.yaml
+configs/dataset/default.yaml
+configs/dataset/fixture.yaml
+configs/dataset/quick.yaml
+configs/dataset_fixture.yaml
+configs/dataset_quick.yaml
+configs/eval/default.yaml
+configs/eval/quick.yaml
+configs/features/fp_morgan_desc.yaml
+configs/features/fp_morgan_fixture.yaml
+configs/features/fp_morgan_quick.yaml
+
+thinking
+**Examining quick config for tests**
+exec
+/bin/zsh -lc "sed -n '1,200p' configs/fp/train_quick.yaml" in /Users/kawahito/Desktop/LJ_prediction succeeded in 305ms:
+defaults:
+  - process: train
+  - dataset: quick
+  - task: lj_epsilon
+  - preprocess: fp_default
+  - features: fp_morgan_quick
+  - model: fp_lightgbm_quick
+  - train: fp_default
+  - eval: quick
+  - hydra: default
+  - _self_
+
+experiment:
+  name: "quick_lgbm_morgan_v1"
+
+process:
+  backend: "fp"
+
+output:
+  run_dir: "runs/train/fp"
+
+thinking
+**Evaluating prediction speed**
+exec
+/bin/zsh -lc "sed -n '1,200p' configs/fp/predict_quick.yaml" in /Users/kawahito/Desktop/LJ_prediction succeeded in 287ms:
+defaults:
+  - process: predict
+  - dataset: quick
+  - infer: fp_quick
+  - hydra: default
+  - _self_
+
+model_artifact_dir: "runs/train/fp/quick_lgbm_morgan_v1"
+
+process:
+  backend: "fp"
+
+output:
+  exp_name: "fp_predict_quick"
+
+thinking
+**Checking quick dataset config**
+exec
+/bin/zsh -lc "sed -n '1,200p' configs/dataset/quick.yaml" in /Users/kawahito/Desktop/LJ_prediction succeeded in 293ms:
+paths:
+  raw_csv: "data/raw/tc_pc_tb_pubchem.csv"
+  sdf_dir: "data/raw/sdf_files"
+  out_csv: "data/processed/quick/dataset_with_lj.csv"
+  out_indices_dir: "data/processed/quick/indices"
+
+columns:
+  cas: "CAS"
+  formula: "MolecularFormula"
+  tc: "Tc [K]"
+  pc: "Pc [Pa]"
+  tb: "Tb [K]"
+
+seed: 42
+
+limit_rows: 2000
+
+lj:
+  epsilon_method: "bird_critical"
+  sigma_method: "bird_critical"
+
+thinking
+**Inspecting dataset configurations**
+exec
+/bin/zsh -lc "sed -n '1,200p' configs/dataset/fixture.yaml" in /Users/kawahito/Desktop/LJ_prediction succeeded in 271ms:
+paths:
+  raw_csv: "tests/fixtures/data/raw/tc_pc_tb_fixture.csv"
+  sdf_dir: "tests/fixtures/data/raw/sdf_files"
+  out_csv: "tests/fixtures/data/processed/dataset_with_lj.csv"
+  out_indices_dir: "tests/fixtures/data/processed/indices"
+
+columns:
+  cas: "CAS"
+  formula: "MolecularFormula"
+  tc: "Tc [K]"
+  pc: "Pc [Pa]"
+  tb: "Tb [K]"
+
+seed: 42
+
+lj:
+  epsilon_method: "bird_critical"
+  sigma_method: "bird_critical"
+  epsilon_col: "lj_epsilon_over_k_K"
+  sigma_col: "lj_sigma_A"
+
+thinking
+**Checking train fixture configuration**
+exec
+/bin/zsh -lc "sed -n '1,200p' configs/fp/train_fixture.yaml" in /Users/kawahito/Desktop/LJ_prediction succeeded in 269ms:
+defaults:
+  - process: train
+  - dataset: fixture
+  - task: lj_epsilon
+  - preprocess: fp_default
+  - features: fp_morgan_fixture
+  - model: fp_rf_fixture
+  - train: fp_default
+  - eval: quick
+  - hydra: default
+  - _self_
+
+experiment:
+  name: "fixture_fp_rf"
+
+process:
+  backend: "fp"
+
+output:
+  run_dir: "runs/train/fp"
+
+thinking
+**Checking predict_fixture configuration**
+exec
+/bin/zsh -lc "sed -n '1,200p' configs/fp/predict_fixture.yaml" in /Users/kawahito/Desktop/LJ_prediction succeeded in 262ms:
+defaults:
+  - process: predict
+  - dataset: fixture
+  - infer: fp_quick
+  - hydra: default
+  - _self_
+
+model_artifact_dir: "runs/train/fp/fixture_fp_rf"
+
+process:
+  backend: "fp"
+
+experiment:
+  name: "fixture_fp_predict"
+
+output:
+  exp_name: "fixture_fp_predict"
+
+thinking
+**Assessing test configurations**
+exec
+/bin/zsh -lc "sed -n '1,200p' tests/test_fixture_dataset.py" in /Users/kawahito/Desktop/LJ_prediction succeeded in 275ms:
+from __future__ import annotations
+
+from pathlib import Path
+
+import pandas as pd
+
+
+def test_fixture_dataset_files_exist() -> None:
+    root = Path(__file__).resolve().parents[1]
+    csv_path = root / "tests" / "fixtures" / "data" / "raw" / "tc_pc_tb_fixture.csv"
+    sdf_dir = root / "tests" / "fixtures" / "data" / "raw" / "sdf_files"
+
+    assert csv_path.exists()
+    assert sdf_dir.exists()
+
+    df = pd.read_csv(csv_path)
+    required_cols = {"CAS", "MolecularFormula", "Tc [K]", "Pc [Pa]", "Tb [K]"}
+    assert required_cols.issubset(set(df.columns))
+
+    missing = []
+
+thinking
+**Exploring additional test files**
+exec
+/bin/zsh -lc "sed -n '1,200p' tests/test_feature_pipeline.py" in /Users/kawahito/Desktop/LJ_prediction succeeded in 292ms:
+from __future__ import annotations
+
+from pathlib import Path
+
+import numpy as np
+import pytest
+
+from src.common.feature_pipeline import EmbeddingFeaturePipeline, FingerprintFeaturePipeline, load_feature_pipeline, save_feature_pipeline
+from src.common.io import load_sdf_mol, sdf_path_from_cas
+
+
+def _load_fixture_mol(cas: str):
+    root = Path(__file__).resolve().parents[1]
+    sdf_dir = root / "tests" / "fixtures" / "data" / "raw" / "sdf_files"
+    return load_sdf_mol(sdf_path_from_cas(sdf_dir, cas))
+
+
+def test_fp_pipeline_roundtrip(tmp_path: Path) -> None:
+    pytest.importorskip("rdkit")
+
+
+thinking
+**Reviewing test setup and dependencies**
+exec
+/bin/zsh -lc 'cat requirements.txt' in /Users/kawahito/Desktop/LJ_prediction succeeded in 274ms:
+# Core
+numpy
+pandas
+pyyaml
+tqdm
+matplotlib
+scikit-learn
+joblib
+
+# Chemistry
+rdkit  # usually installed via conda-forge; pip availability depends on platform
+
+# FP models
+lightgbm
+catboost
+
+# GNN (optional; install matching versions manually)
+torch
+# torch-geometric  # install via official instructions
+
+thinking
+**Checking for pytest configuration**
+exec
+/bin/zsh -lc 'ls pyproject.toml' in /Users/kawahito/Desktop/LJ_prediction exited 1 in 264ms:
+ls: pyproject.toml: No such file or directory
+
+thinking
+**Evaluating test setup and dependencies**
+exec
+/bin/zsh -lc "sed -n '1,200p' src/fp/train.py" in /Users/kawahito/Desktop/LJ_prediction succeeded in 294ms:
+from __future__ import annotations
+
+import argparse
+import pickle
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
+import numpy as np
+import pandas as pd
+
+from src.common.ad import applicability_domain
+from src.common.config import dump_yaml, load_config
+from src.common.feature_pipeline import FingerprintFeaturePipeline, resolve_tabular_pipeline, save_feature_pipeline
+from src.common.meta import build_meta, save_meta
+from src.common.io import load_sdf_mol, read_csv, sdf_path_from_cas
+from src.common.plots import save_parity_plot, save_residual_plot, save_hist
+from src.common.splitters import load_split_indices
+from src.common.utils import ensure_dir, get_logger, save_json, set_seed
+from src.fp.feature_utils import hash_cfg
+from src.fp.featurizer_fp import morgan_bitvect
+exec
+/bin/zsh -lc "sed -n '200,400p' src/fp/train.py" in /Users/kawahito/Desktop/LJ_prediction succeeded in 264ms:
+                pass
+
+    # Save artifacts
+    artifacts_dir = ensure_dir(run_dir / "artifacts")
+    save_feature_pipeline(pipeline, artifacts_dir)
+    pipeline.save_preprocess_artifacts(artifacts_dir)
+    model_path = artifacts_dir / "model.pkl"
+    with open(model_path, "wb") as f:
+        pickle.dump(model, f)
+
+    # AD artifacts: training fingerprints and training elements
+    # Compute Morgan bitvect for all training mols in ORIGINAL dataset order to simplify indexing.
+    # We'll store only training set for speed.
+    ad_cfg = cfg.get("ad", {}) or {}
+    if isinstance(pipeline, FingerprintFeaturePipeline):
+        ad_radius = pipeline.fp_cfg.morgan_radius
+        ad_n_bits = pipeline.fp_cfg.n_bits
+    else:
+        ad_radius = int(ad_cfg.get("morgan_radius", 2))
+        ad_n_bits = int(ad_cfg.get("n_bits", 2048))
+
+thinking
+**Considering prediction for fp**
+exec
+/bin/zsh -lc "sed -n '1,200p' src/fp/predict.py" in /Users/kawahito/Desktop/LJ_prediction succeeded in 262ms:
+from __future__ import annotations
+
+import argparse
+import pickle
+from pathlib import Path
+from typing import Any, Dict, Tuple
+
+import pandas as pd
+
+from src.common.ad import applicability_domain
+from src.common.chemistry import get_elements_from_mol
+from src.common.config import dump_yaml, load_config
+from src.common.feature_pipeline import load_tabular_pipeline
+from src.common.meta import build_meta, save_meta
+from src.common.io import load_sdf_mol, read_csv, sdf_path_from_cas
+from src.common.utils import ensure_dir, get_logger, save_json
+from src.fp.featurizer_fp import morgan_bitvect
+from src.utils.artifacts import compute_dataset_hash, load_meta, resolve_training_context
+from src.utils.validate_config import validate_config
+
+
+thinking
+**Inspecting existing tests for config loader**
+exec
+/bin/zsh -lc "sed -n '1,200p' tests/test_config_loader.py" in /Users/kawahito/Desktop/LJ_prediction succeeded in 273ms:
+from pathlib import Path
+
+from src.common.config import load_config
+
+
+def test_load_config_resolves_groups_from_root() -> None:
+    cfg = load_config(Path("configs/fp/train_fixture.yaml"))
+
+    assert cfg["process"]["name"] == "train"
+    assert cfg["process"]["backend"] == "fp"
+    assert cfg["output"]["run_dir"] == "runs/train/fp"
+    assert cfg["paths"]["raw_csv"] == "tests/fixtures/data/raw/tc_pc_tb_fixture.csv"
+
+
+def test_load_gin_model_config() -> None:
+    cfg = load_config(Path("configs/model/gin.yaml"))
+
+    assert cfg["model"]["name"] == "gin"
+    assert cfg["model"]["family"] == "gnn"
+
+thinking
+**Designing integration smoke tests for train and predict**
+
+I'm mapping out a quick integration smoke test for training and prediction using fixture configs to keep runtime short. I'll ensure tests isolate output in temporary directories to avoid messing with repo artifacts, and consider running both scripts via CLI or calling core run functions directly for efficiency. Adjusting configs dynamically to point output paths and model artifacts correctly sounds key to clean, repeatable test runs!
+exec
+/bin/zsh -lc "sed -n '1,200p' configs/model/fp_rf_fixture.yaml" in /Users/kawahito/Desktop/LJ_prediction succeeded in 284ms:
+model:
+  family: "fp"
+  name: "rf"
+  params:
+    n_estimators: 50
+    random_state: 42
+
+thinking
+**Planning test environment checks and validations**
+
+I'm thinking about handling dependencies for the integration test, especially RDKit which might be missing, so I'll add pytest import-or-skip checks to avoid failure. Since training and prediction rely on RDKit and scikit-learn, I'll cautiously skip tests if RDKit is absent but lean toward not skipping if scikit-learn is missing given it's a primary requirement. I also want to verify that training and prediction produce the expected artifact files using existing validation utilities to make the tests robust yet not too fragile.
+exec
+/bin/zsh -lc "sed -n '1,200p' src/utils/artifacts.py" in /Users/kawahito/Desktop/LJ_prediction succeeded in 267ms:
+from __future__ import annotations
+
+import csv
+import hashlib
+import json
+import subprocess
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Dict, Iterable, Optional
+from uuid import uuid4
+
+from src.common.utils import save_json
+
+REQUIRED_META_KEYS = [
+    "run_id",
+    "process_name",
+    "created_at",
+    "git_sha",
+    "dataset_hash",
+    "config_hash",
+
+thinking
+**Extending validation functions**
+exec
+/bin/zsh -lc 'rg -n "validate_.*artifacts" -n src/utils/artifacts.py' in /Users/kawahito/Desktop/LJ_prediction succeeded in 276ms:
+269:def validate_common_artifacts(run_dir: str | Path) -> None:
+280:def validate_train_artifacts(run_dir: str | Path) -> None:
+282:    validate_common_artifacts(run_dir)
+291:def validate_evaluate_artifacts(run_dir: str | Path) -> None:
+293:    validate_common_artifacts(run_dir)
+301:def validate_predict_artifacts(run_dir: str | Path) -> None:
+303:    validate_common_artifacts(run_dir)
+exec
+/bin/zsh -lc "sed -n '240,340p' src/utils/artifacts.py" in /Users/kawahito/Desktop/LJ_prediction succeeded in 256ms:
+        "featureset_name": train_meta.get("featureset_name") or resolve_featureset_name(train_cfg),
+        "dataset_hash": train_meta.get("dataset_hash"),
+        "model_version": train_meta.get("model_version") or train_meta.get("run_id"),
+    }
+    if context["model_version"] is None and model_artifact_dir is not None:
+        context["model_version"] = model_artifact_dir.name
+    return context
+
+
+def validate_meta(meta: Dict[str, Any]) -> None:
+    missing = [k for k in REQUIRED_META_KEYS if k not in meta]
+    if missing:
+        raise ValueError(f"meta.json missing keys: {', '.join(missing)}")
+
+
+def validate_predictions_csv(path: str | Path) -> None:
+    path = Path(path)
+    if not path.exists():
+        raise FileNotFoundError(f"predictions.csv not found: {path}")
+    with path.open("r", encoding="utf-8") as f:
+
+thinking
+**Checking validation usage in tests**
+exec
+/bin/zsh -lc "sed -n '1,200p' tests/test_data_collection.py" in /Users/kawahito/Desktop/LJ_prediction succeeded in 269ms:
+from __future__ import annotations
+
+from pathlib import Path
+
+import pandas as pd
+
+from src.data_collection.runner import run
+
+
+def test_collect_data_dummy(tmp_path: Path) -> None:
+    cfg = {
+        "process": {"name": "collect_data"},
+        "output": {"run_dir": str(tmp_path / "runs"), "exp_name": "dummy_run"},
+        "data_collection": {
+            "query": {"identifiers": ["64-17-5"], "limit": 1},
+            "required_columns": ["CAS", "MolecularFormula", "Tc [K]"],
+            "sample_id_column": "sample_id",
+            "cache": {"enabled": False},
+            "output": {"raw_csv_name": "raw.csv", "sdf_dir_name": "sdf_files", "overwrite": True},
+            "export": {"enabled": False},
+
+thinking
+**Preparing integration tests with fixtures**
+exec
+/bin/zsh -lc 'rg -n "rdkit|importorskip" tests src' in /Users/kawahito/Desktop/LJ_prediction succeeded in 276ms:
+tests/test_audit_dataset.py:9:rdkit = pytest.importorskip("rdkit")
+tests/test_audit_dataset.py:10:from rdkit import Chem
+tests/test_feature_pipeline.py:19:    pytest.importorskip("rdkit")
+tests/test_feature_pipeline.py:55:    pytest.importorskip("rdkit")
+tests/test_splitters.py:37:    pytest.importorskip("rdkit")
+tests/test_splitters.py:38:    from rdkit import Chem
+src/data/audit.py:16:    from rdkit import Chem
+src/data/audit.py:17:    from rdkit.Chem import Descriptors
+src/data/audit.py:23:def _require_rdkit() -> None:
+src/data/audit.py:25:        raise ImportError("RDKit is required for dataset audit. Please install rdkit.")
+src/data/audit.py:127:    _require_rdkit()
+src/gnn/featurizer_graph.py:18:    from rdkit import Chem
+src/common/ad.py:9:    from rdkit import DataStructs
+src/fp/featurizer_fp.py:11:    from rdkit import Chem, DataStructs
+src/fp/featurizer_fp.py:12:    from rdkit.Chem import AllChem, MACCSkeys, rdMolDescriptors
+src/fp/featurizer_fp.py:59:    elif fp_name == "rdkit":
+src/common/chemistry.py:9:    from rdkit import Chem
+src/common/chemistry.py:10:    from rdkit.Chem.Scaffolds import MurckoScaffold
+src/fp/featurizer_embedding.py:10:    from rdkit import Chem
+src/common/dataset_selectors.py:10:    from rdkit import Chem, DataStructs
+
+thinking
+**Designing integration tests with rdkit and CLI**
+
+I’m planning integration smoke tests for train and predict commands using pytest’s importorskip for rdkit. The tests will use minimal fixture configs, write outputs under tmp_path, and invoke training via subprocess to simulate the CLI, then verify outputs before running prediction with appropriate config adjustments. I want to balance test coverage and speed, avoiding heavy outputs like plots when possible.
+exec
+/bin/zsh -lc "sed -n '1,200p' configs/process/predict.yaml" in /Users/kawahito/Desktop/LJ_prediction succeeded in 279ms:
+process:
+  name: "predict"
+  kind: "predict"
+
+output:
+  out_dir: "runs/predict"
+
+thinking
+**Reviewing config and dataset setup**
+
+I'm mapping out how the output directories and experiment names are configured across training and prediction, making sure I can locate the run directories and prediction outputs properly. I’m also checking the fixture dataset CSV to verify it has the required feature columns like `n_heavy_atoms` and `elements` since those are critical for the training pipeline. This way, I can ensure the test setup is complete and consistent.
+exec
+/bin/zsh -lc "python - <<'PY'
+import pandas as pd
+from pathlib import Path
+path = Path('tests/fixtures/data/processed/dataset_with_lj.csv')
+print(path.exists())
+if path.exists():
+    df = pd.read_csv(path)
+    print(df.columns.tolist())
+    print(df.head())
+PY" in /Users/kawahito/Desktop/LJ_prediction succeeded in 922ms:
+True
+['CAS', 'MolecularFormula', 'Tc [K]', 'Pc [Pa]', 'Tb [K]', 'raw_row_index', 'elements', 'n_elements', 'n_atoms', 'n_heavy_atoms', 'lj_epsilon_over_k_K', 'lj_sigma_A', 'lj_valid_flag']
+        CAS MolecularFormula  ...  lj_sigma_A  lj_valid_flag
+0   64-17-5            C2H6O  ...    4.976152           True
+1   74-98-6             C3H8  ...    5.040667           True
+2   74-85-1             C2H4  ...    4.352333           True
+3   67-64-1            C3H6O  ...    5.419272           True
+4  110-82-7            C6H12  ...    5.844955           True
+
+[5 rows x 13 columns]
+
+thinking
+**Checking feature config files**
+exec
+/bin/zsh -lc "sed -n '1,200p' configs/features/fp_morgan_fixture.yaml" in /Users/kawahito/Desktop/LJ_prediction succeeded in 265ms:
+featurizer:
+  fingerprint: "morgan"
+  morgan_radius: 2
+  n_bits: 512
+  use_counts: false
+  add_descriptors: []
+
+data:
+  cache_dir: "tests/fixtures/data/processed/cache/fp"
+
+thinking
+**Verifying cache directory handling**
+exec
+/bin/zsh -lc 'rg -n "cache_dir" -n src/common/feature_pipeline.py' in /Users/kawahito/Desktop/LJ_prediction succeeded in 296ms:
+106:        cache_dir: Optional[Path],
+115:            cache_dir=cache_dir,
+206:        cache_dir: Optional[Path],
+215:            cache_dir=cache_dir,
+exec
+/bin/zsh -lc "sed -n '80,150p' src/common/feature_pipeline.py" in /Users/kawahito/Desktop/LJ_prediction succeeded in 256ms:
+@dataclass
+class FingerprintFeaturePipeline:
+    fp_cfg: FPConfig = field(default_factory=FPConfig)
+    impute_strategy: str = "mean"
+    standardize: bool = False
+    imputer: Optional[SimpleImputer] = None
+    scaler: Optional[StandardScaler] = None
+    feature_meta: Optional[Dict[str, Any]] = None
+    pipeline_type: str = field(default="fp", init=False)
+    version: int = field(default=PIPELINE_VERSION, init=False)
+
+    @classmethod
+    def from_config(cls, cfg: Dict[str, Any]) -> "FingerprintFeaturePipeline":
+        feat_cfg = cfg.get("featurizer", {}) or {}
+        preprocess_cfg = cfg.get("preprocess", {}) or {}
+        return cls(
+            fp_cfg=build_fp_config(feat_cfg),
+            impute_strategy=str(preprocess_cfg.get("impute_nan", "mean")),
+            standardize=bool(preprocess_cfg.get("standardize", False)),
+        )
+
+thinking
+**Reviewing build_features usage**
+exec
+/bin/zsh -lc "rg -n \"build_features\\(\" -n src/common/feature_pipeline.py src/fp/feature_utils.py" in /Users/kawahito/Desktop/LJ_prediction succeeded in 274ms:
+src/fp/feature_utils.py:23:def build_features(
+src/common/feature_pipeline.py:101:    def build_features(
+src/common/feature_pipeline.py:110:        X, ids, elements, meta = build_features(
+src/common/feature_pipeline.py:201:    def build_features(
+exec
+/bin/zsh -lc "sed -n '1,200p' src/fp/feature_utils.py" in /Users/kawahito/Desktop/LJ_prediction succeeded in 294ms:
+from __future__ import annotations
+
+import hashlib
+import pickle
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
+import numpy as np
+import pandas as pd
+from tqdm import tqdm
+
+from src.common.io import load_sdf_mol, sdf_path_from_cas
+from src.common.utils import ensure_dir
+from src.fp.featurizer_embedding import PretrainedEmbeddingConfig, featurize_mol as featurize_embedding_mol
+from src.fp.featurizer_fp import FPConfig, featurize_mol
+
+
+def hash_cfg(obj: Dict[str, Any]) -> str:
+    s = repr(obj).encode("utf-8")
+    return hashlib.sha256(s).hexdigest()[:12]
+
+thinking
+**Checking cache directory in fixtures**
+exec
+/bin/zsh -lc 'ls tests/fixtures/data/processed' in /Users/kawahito/Desktop/LJ_prediction succeeded in 279ms:
+build_dataset.log
+cache
+dataset_config_snapshot.yaml
+dataset_with_lj.csv
+indices
+
+thinking
+**Inspecting cache and config paths**
+exec
+/bin/zsh -lc "sed -n '1,200p' configs/infer/fp_quick.yaml" in /Users/kawahito/Desktop/LJ_prediction succeeded in 253ms:
+input:
+  mode: "cas"
+
+thinking
+**Planning integration test strategy**
+
+I’m considering how best to run end-to-end training and prediction integration tests—deciding between calling core run functions directly or using subprocesses to run the scripts for realism. Running subprocesses with sys.executable, setting cwd to the repo root, and writing configs with absolute or repo-relative dataset paths feels like the right balance. I’ll also set up a tests/integration directory and ensure pytest works smoothly without asking for user approval, while abiding by all requirements including marking tasks done in work/queue.json and announcing the skill used for test/CI changes.
+exec
+/bin/zsh -lc 'ls -a' in /Users/kawahito/Desktop/LJ_prediction succeeded in 282ms:
+.
+..
+.DS_Store
+.cache
+.git
+.gitignore
+.pytest_cache
+.venv
+.vscode
+README.md
+agentskills
+codex
+configs
+data
+docs
+learning_curve_val.png
+objective.md
+parity_test.png
+parity_val.png
+requirements.txt
+
+thinking
+**Evaluating CI and integration test setup**
+
+I'm considering whether to add GitHub Actions since it's optional and complicated by dependency issues like rdkit and conda; deciding to skip CI workflows for now. Instead, I'll focus on creating an integration smoke test for training and prediction using the CLI via subprocess to best follow test policies. I'll handle configuration tweaks to isolate outputs and avoid writing unwanted files while ensuring deterministic runs and minimal dependencies. I'll also plan to update queue.json when done, keeping changes within allowed paths and mindful that pytest is likely already available in the environment.
+exec
+/bin/zsh -lc "python - <<'PY'
+from pathlib import Path
+import numpy as np
+root = Path('tests/fixtures/data/processed/indices')
+for name in ['train','val','test']:
+    p = root / f'{name}.txt'
+    with p.open() as f:
+        idx = [int(x.strip()) for x in f if x.strip()]
+    print(name, idx)
+PY" in /Users/kawahito/Desktop/LJ_prediction succeeded in 395ms:
+train [3, 2, 5]
+val [4]
+test [1, 0]
+
+thinking
+**Verifying directory setup and config validation**
+exec
+/bin/zsh -lc "sed -n '1,200p' src/utils/validate_config.py" in /Users/kawahito/Desktop/LJ_prediction succeeded in 275ms:
+from __future__ import annotations
+
+from typing import Any, Dict, Iterable
+
+from src.common.config import ConfigError
+from src.tasks import resolve_target_columns
+
+
+def _require_keys(cfg: Dict[str, Any], keys: Iterable[str], context: str) -> None:
+    missing = [k for k in keys if k not in cfg]
+    if missing:
+        raise ConfigError(f"{context} missing keys: {', '.join(missing)}")
+
+
+def _has_target(cfg: Dict[str, Any]) -> bool:
+    return bool(resolve_target_columns(cfg))
+
+
+def validate_config(cfg: Dict[str, Any]) -> None:
+    process = cfg.get("process", {})
+
+thinking
+**Drafting integration test and CI considerations**
+
+I'm planning an integration smoke test covering training and prediction workflows using pytest with conditional skipping if RDKit is missing. I'll create a new test file under tests/integration, carefully set up config overrides for temp paths, and run the scripts as subprocesses. I'm also weighing whether to add a minimal GitHub Actions workflow to run the tests, noting dependency and environment complexities that might cause some tests to be skipped during CI runs.
+exec
+/bin/zsh -lc 'rg -n "catboost|lightgbm" tests' in /Users/kawahito/Desktop/LJ_prediction succeeded in 306ms:
+tests/contract/test_artifacts_contract.py:37:        "model": {"name": "lightgbm"},
+tests/contract/test_artifacts_contract.py:49:    assert meta["model_name"] == "lightgbm"
+
+thinking
+**Planning pytest integration and test environment constraints**
+
+I'm weighing how to add an integration test using pytest, mindful that heavy dependencies like lightgbm might not be installed in the user's environment due to network restrictions. I'll consider adding import skips in the test for optional libs like scikit-learn to avoid failures, and possibly provide commands for the user to run tests since CI installs aren't allowed here. Running pytest quietly seems safe to try despite potential missing dependencies.
+exec
+/bin/zsh -lc "sed -n '1,200p' src/fp/models.py" in /Users/kawahito/Desktop/LJ_prediction succeeded in 283ms:
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any, Dict, Optional
+
+import numpy as np
+
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.gaussian_process import GaussianProcessRegressor
+from sklearn.gaussian_process.kernels import RBF, ConstantKernel as C
+
+try:
+    import lightgbm as lgb
+except Exception:  # pragma: no cover
+    lgb = None
+
+try:
+    from catboost import CatBoostRegressor
+except Exception:  # pragma: no cover
+    CatBoostRegressor = None
+
+thinking
+**Handling optional dependencies in tests**
+exec
+/bin/zsh -lc "sed -n '1,200p' src/common/plots.py" in /Users/kawahito/Desktop/LJ_prediction succeeded in 252ms:
+from __future__ import annotations
+
+import os
+from pathlib import Path
+from typing import Optional, Sequence
+
+
+def _configure_matplotlib_cache() -> None:
+    """
+    Ensure Matplotlib uses a writable config/cache directory.
+
+    Some environments (e.g. sandboxed runs, containers) cannot write to $HOME,
+    which can make Matplotlib imports very slow or noisy due to repeated cache builds.
+    """
+    if os.environ.get("MPLCONFIGDIR"):
+        return
+    cache_root = Path.cwd() / ".cache"
+    cache_dir = cache_root / "matplotlib"
+    try:
+        cache_dir.mkdir(parents=True, exist_ok=True)
+
+thinking
+**Considering dependency handling in tests**
+file update
+A /Users/kawahito/Desktop/LJ_prediction/tests/integration/test_smoke_fp_train_predict.py
+from __future__ import annotations
+
+import subprocess
+import sys
+from pathlib import Path
+
+import pytest
+
+from src.common.config import dump_yaml, load_config
+from src.utils.artifacts import validate_predict_artifacts, validate_train_artifacts
+
+
+def test_smoke_fp_train_predict(tmp_path: Path) -> None:
+    pytest.importorskip("rdkit")
+    pytest.importorskip("sklearn")
+
+    repo_root = Path(__file__).resolve().parents[2]
+
+    train_cfg = load_config(repo_root / "configs/fp/train_fixture.yaml")
+    train_run_root = tmp_path / "runs" / "train" / "fp"
+    train_cfg["output"]["run_dir"] = str(train_run_root)
+    train_cfg["output"]["exp_name"] = "smoke_train"
+    train_cfg["output"]["plots"] = False
+    train_cfg.setdefault("data", {})["cache_dir"] = str(tmp_path / "cache")
+
+    train_cfg_path = tmp_path / "train_smoke.yaml"
+    dump_yaml(train_cfg_path, train_cfg)
+
+    subprocess.run(
+        [
+            sys.executable,
+            str(repo_root / "scripts/train.py"),
+            "--config",
+            str(train_cfg_path),
+        ],
+        check=True,
+        cwd=repo_root,
+    )
+
+    train_run_dir = train_run_root / "smoke_train"
+    validate_train_artifacts(train_run_dir)
+
+    predict_cfg = load_config(repo_root / "configs/fp/predict_fixture.yaml")
+    predict_cfg["model_artifact_dir"] = str(train_run_dir)
+    predict_cfg["output"]["out_dir"] = str(tmp_path / "runs" / "predict")
+    predict_cfg["output"]["exp_name"] = "smoke_predict"
+
+    predict_cfg_path = tmp_path / "predict_smoke.yaml"
+    dump_yaml(predict_cfg_path, predict_cfg)
+
+    subprocess.run(
+        [
+            sys.executable,
+            str(repo_root / "scripts/predict.py"),
+            "--config",
+            str(predict_cfg_path),
+            "--query",
+            "64-17-5",
+        ],
+        check=True,
+        cwd=repo_root,
+    )
+
+    predict_run_dir = Path(predict_cfg["output"]["out_dir"]) / "smoke_predict"
+    validate_predict_artifacts(predict_run_dir)
+apply_patch(auto_approved=true) exited 0 in 33ms:
+Success. Updated the following files:
+A tests/integration/test_smoke_fp_train_predict.py
+file update:
+diff --git a/tests/integration/test_smoke_fp_train_predict.py b/tests/integration/test_smoke_fp_train_predict.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..04a8b8b51073ab4e2af8592f2cd0a952a61c62aa
+--- /dev/null
++++ b/tests/integration/test_smoke_fp_train_predict.py
+@@ -0,0 +1,65 @@
++from __future__ import annotations
++
++import subprocess
++import sys
++from pathlib import Path
++
++import pytest
++
++from src.common.config import dump_yaml, load_config
++from src.utils.artifacts import validate_predict_artifacts, validate_train_artifacts
++
++
++def test_smoke_fp_train_predict(tmp_path: Path) -> None:
++    pytest.importorskip("rdkit")
++    pytest.importorskip("sklearn")
++
++    repo_root = Path(__file__).resolve().parents[2]
++
++    train_cfg = load_config(repo_root / "configs/fp/train_fixture.yaml")
++    train_run_root = tmp_path / "runs" / "train" / "fp"
++    train_cfg["output"]["run_dir"] = str(train_run_root)
++    train_cfg["output"]["exp_name"] = "smoke_train"
++    train_cfg["output"]["plots"] = False
++    train_cfg.setdefault("data", {})["cache_dir"] = str(tmp_path / "cache")
++
++    train_cfg_path = tmp_path / "train_smoke.yaml"
++    dump_yaml(train_cfg_path, train_cfg)
++
++    subprocess.run(
++        [
++            sys.executable,
++            str(repo_root / "scripts/train.py"),
++            "--config",
++            str(train_cfg_path),
++        ],
++        check=True,
++        cwd=repo_root,
++    )
++
++    train_run_dir = train_run_root / "smoke_train"
++    validate_train_artifacts(train_run_dir)
++
++    predict_cfg = load_config(repo_root / "configs/fp/predict_fixture.yaml")
++    predict_cfg["model_artifact_dir"] = str(train_run_dir)
++    predict_cfg["output"]["out_dir"] = str(tmp_path / "runs" / "predict")
++    predict_cfg["output"]["exp_name"] = "smoke_predict"
++
++    predict_cfg_path = tmp_path / "predict_smoke.yaml"
++    dump_yaml(predict_cfg_path, predict_cfg)
++
++    subprocess.run(
++        [
++            sys.executable,
++            str(repo_root / "scripts/predict.py"),
++            "--config",
++            str(predict_cfg_path),
++            "--query",
++            "64-17-5",
++        ],
++        check=True,
++        cwd=repo_root,
++    )
++
++    predict_run_dir = Path(predict_cfg["output"]["out_dir"]) / "smoke_predict"
++    validate_predict_artifacts(predict_run_dir)
+
+file update:
+diff --git a/tests/integration/test_smoke_fp_train_predict.py b/tests/integration/test_smoke_fp_train_predict.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..04a8b8b51073ab4e2af8592f2cd0a952a61c62aa
+--- /dev/null
++++ b/tests/integration/test_smoke_fp_train_predict.py
+@@ -0,0 +1,65 @@
++from __future__ import annotations
++
++import subprocess
++import sys
++from pathlib import Path
++
++import pytest
++
++from src.common.config import dump_yaml, load_config
++from src.utils.artifacts import validate_predict_artifacts, validate_train_artifacts
++
++
++def test_smoke_fp_train_predict(tmp_path: Path) -> None:
++    pytest.importorskip("rdkit")
++    pytest.importorskip("sklearn")
++
++    repo_root = Path(__file__).resolve().parents[2]
++
++    train_cfg = load_config(repo_root / "configs/fp/train_fixture.yaml")
++    train_run_root = tmp_path / "runs" / "train" / "fp"
++    train_cfg["output"]["run_dir"] = str(train_run_root)
++    train_cfg["output"]["exp_name"] = "smoke_train"
++    train_cfg["output"]["plots"] = False
++    train_cfg.setdefault("data", {})["cache_dir"] = str(tmp_path / "cache")
++
++    train_cfg_path = tmp_path / "train_smoke.yaml"
++    dump_yaml(train_cfg_path, train_cfg)
++
++    subprocess.run(
++        [
++            sys.executable,
++            str(repo_root / "scripts/train.py"),
++            "--config",
++            str(train_cfg_path),
++        ],
++        check=True,
++        cwd=repo_root,
++    )
++
++    train_run_dir = train_run_root / "smoke_train"
++    validate_train_artifacts(train_run_dir)
++
++    predict_cfg = load_config(repo_root / "configs/fp/predict_fixture.yaml")
++    predict_cfg["model_artifact_dir"] = str(train_run_dir)
++    predict_cfg["output"]["out_dir"] = str(tmp_path / "runs" / "predict")
++    predict_cfg["output"]["exp_name"] = "smoke_predict"
++
++    predict_cfg_path = tmp_path / "predict_smoke.yaml"
++    dump_yaml(predict_cfg_path, predict_cfg)
++
++    subprocess.run(
++        [
++            sys.executable,
++            str(repo_root / "scripts/predict.py"),
++            "--config",
++            str(predict_cfg_path),
++            "--query",
++            "64-17-5",
++        ],
++        check=True,
++        cwd=repo_root,
++    )
++
++    predict_run_dir = Path(predict_cfg["output"]["out_dir"]) / "smoke_predict"
++    validate_predict_artifacts(predict_run_dir)
+
+
+thinking
+**Preparing to run tests**
+exec
+/bin/zsh -lc 'pytest -q' in /Users/kawahito/Desktop/LJ_prediction succeeded in 8.84s:
+................                                                         [100%]
+16 passed in 7.80s
+file update:
+diff --git a/tests/integration/test_smoke_fp_train_predict.py b/tests/integration/test_smoke_fp_train_predict.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..04a8b8b51073ab4e2af8592f2cd0a952a61c62aa
+--- /dev/null
++++ b/tests/integration/test_smoke_fp_train_predict.py
+@@ -0,0 +1,65 @@
++from __future__ import annotations
++
++import subprocess
++import sys
++from pathlib import Path
++
++import pytest
++
++from src.common.config import dump_yaml, load_config
++from src.utils.artifacts import validate_predict_artifacts, validate_train_artifacts
++
++
++def test_smoke_fp_train_predict(tmp_path: Path) -> None:
++    pytest.importorskip("rdkit")
++    pytest.importorskip("sklearn")
++
++    repo_root = Path(__file__).resolve().parents[2]
++
++    train_cfg = load_config(repo_root / "configs/fp/train_fixture.yaml")
++    train_run_root = tmp_path / "runs" / "train" / "fp"
++    train_cfg["output"]["run_dir"] = str(train_run_root)
++    train_cfg["output"]["exp_name"] = "smoke_train"
++    train_cfg["output"]["plots"] = False
++    train_cfg.setdefault("data", {})["cache_dir"] = str(tmp_path / "cache")
++
++    train_cfg_path = tmp_path / "train_smoke.yaml"
++    dump_yaml(train_cfg_path, train_cfg)
++
++    subprocess.run(
++        [
++            sys.executable,
++            str(repo_root / "scripts/train.py"),
++            "--config",
++            str(train_cfg_path),
++        ],
++        check=True,
++        cwd=repo_root,
++    )
++
++    train_run_dir = train_run_root / "smoke_train"
++    validate_train_artifacts(train_run_dir)
++
++    predict_cfg = load_config(repo_root / "configs/fp/predict_fixture.yaml")
++    predict_cfg["model_artifact_dir"] = str(train_run_dir)
++    predict_cfg["output"]["out_dir"] = str(tmp_path / "runs" / "predict")
++    predict_cfg["output"]["exp_name"] = "smoke_predict"
++
++    predict_cfg_path = tmp_path / "predict_smoke.yaml"
++    dump_yaml(predict_cfg_path, predict_cfg)
++
++    subprocess.run(
++        [
++            sys.executable,
++            str(repo_root / "scripts/predict.py"),
++            "--config",
++            str(predict_cfg_path),
++            "--query",
++            "64-17-5",
++        ],
++        check=True,
++        cwd=repo_root,
++    )
++
++    predict_run_dir = Path(predict_cfg["output"]["out_dir"]) / "smoke_predict"
++    validate_predict_artifacts(predict_run_dir)
+
+
+thinking
+**Updating queue.json status**
+exec
+/bin/zsh -lc "python - <<'PY'
+import json
+from datetime import datetime, timezone
+from pathlib import Path
+
+path = Path('work/queue.json')
+obj = json.loads(path.read_text())
+obj['updated_at'] = datetime.now(timezone.utc).isoformat().replace('+00:00','Z')
+for task in obj.get('tasks', []):
+    if task.get('id') == '090':
+        task['status'] = 'done'
+path.write_text(json.dumps(obj, indent=2, ensure_ascii=False) + '\\n')
+PY" in /Users/kawahito/Desktop/LJ_prediction succeeded in 305ms:
+
+file update:
+diff --git a/tests/integration/test_smoke_fp_train_predict.py b/tests/integration/test_smoke_fp_train_predict.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..04a8b8b51073ab4e2af8592f2cd0a952a61c62aa
+--- /dev/null
++++ b/tests/integration/test_smoke_fp_train_predict.py
+@@ -0,0 +1,65 @@
++from __future__ import annotations
++
++import subprocess
++import sys
++from pathlib import Path
++
++import pytest
++
++from src.common.config import dump_yaml, load_config
++from src.utils.artifacts import validate_predict_artifacts, validate_train_artifacts
++
++
++def test_smoke_fp_train_predict(tmp_path: Path) -> None:
++    pytest.importorskip("rdkit")
++    pytest.importorskip("sklearn")
++
++    repo_root = Path(__file__).resolve().parents[2]
++
++    train_cfg = load_config(repo_root / "configs/fp/train_fixture.yaml")
++    train_run_root = tmp_path / "runs" / "train" / "fp"
++    train_cfg["output"]["run_dir"] = str(train_run_root)
++    train_cfg["output"]["exp_name"] = "smoke_train"
++    train_cfg["output"]["plots"] = False
++    train_cfg.setdefault("data", {})["cache_dir"] = str(tmp_path / "cache")
++
++    train_cfg_path = tmp_path / "train_smoke.yaml"
++    dump_yaml(train_cfg_path, train_cfg)
++
++    subprocess.run(
++        [
++            sys.executable,
++            str(repo_root / "scripts/train.py"),
++            "--config",
++            str(train_cfg_path),
++        ],
++        check=True,
++        cwd=repo_root,
++    )
++
++    train_run_dir = train_run_root / "smoke_train"
++    validate_train_artifacts(train_run_dir)
++
++    predict_cfg = load_config(repo_root / "configs/fp/predict_fixture.yaml")
++    predict_cfg["model_artifact_dir"] = str(train_run_dir)
++    predict_cfg["output"]["out_dir"] = str(tmp_path / "runs" / "predict")
++    predict_cfg["output"]["exp_name"] = "smoke_predict"
++
++    predict_cfg_path = tmp_path / "predict_smoke.yaml"
++    dump_yaml(predict_cfg_path, predict_cfg)
++
++    subprocess.run(
++        [
++            sys.executable,
++            str(repo_root / "scripts/predict.py"),
++            "--config",
++            str(predict_cfg_path),
++            "--query",
++            "64-17-5",
++        ],
++        check=True,
++        cwd=repo_root,
++    )
++
++    predict_run_dir = Path(predict_cfg["output"]["out_dir"]) / "smoke_predict"
++    validate_predict_artifacts(predict_run_dir)
+
+
+thinking
+**Validating JSON encoding and git status**
+exec
+/bin/zsh -lc 'git status -sb' in /Users/kawahito/Desktop/LJ_prediction succeeded in 266ms:
+## test_chemkit
+ M README.md
+ M configs/dataset.yaml
+ M configs/dataset_quick.yaml
+ M configs/fp/predict.yaml
+ M configs/fp/predict_quick.yaml
+ M configs/fp/train.yaml
+ M configs/fp/train_quick.yaml
+ M configs/gnn/predict.yaml
+ M configs/gnn/train.yaml
+ M configs/gnn/train_mpnn_quick.yaml
+ M configs/gnn/train_quick.yaml
+ M objective.md
+ M scripts/build_dataset.py
+ D scripts/fp_predict.py
+ D scripts/fp_train.py
+ D scripts/gnn_predict.py
+ D scripts/gnn_train.py
+ M src/common/config.py
+ M src/common/splitters.py
+file update:
+diff --git a/tests/integration/test_smoke_fp_train_predict.py b/tests/integration/test_smoke_fp_train_predict.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..04a8b8b51073ab4e2af8592f2cd0a952a61c62aa
+--- /dev/null
++++ b/tests/integration/test_smoke_fp_train_predict.py
+@@ -0,0 +1,65 @@
++from __future__ import annotations
++
++import subprocess
++import sys
++from pathlib import Path
++
++import pytest
++
++from src.common.config import dump_yaml, load_config
++from src.utils.artifacts import validate_predict_artifacts, validate_train_artifacts
++
++
++def test_smoke_fp_train_predict(tmp_path: Path) -> None:
++    pytest.importorskip("rdkit")
++    pytest.importorskip("sklearn")
++
++    repo_root = Path(__file__).resolve().parents[2]
++
++    train_cfg = load_config(repo_root / "configs/fp/train_fixture.yaml")
++    train_run_root = tmp_path / "runs" / "train" / "fp"
++    train_cfg["output"]["run_dir"] = str(train_run_root)
++    train_cfg["output"]["exp_name"] = "smoke_train"
++    train_cfg["output"]["plots"] = False
++    train_cfg.setdefault("data", {})["cache_dir"] = str(tmp_path / "cache")
++
++    train_cfg_path = tmp_path / "train_smoke.yaml"
++    dump_yaml(train_cfg_path, train_cfg)
++
++    subprocess.run(
++        [
++            sys.executable,
++            str(repo_root / "scripts/train.py"),
++            "--config",
++            str(train_cfg_path),
++        ],
++        check=True,
++        cwd=repo_root,
++    )
++
++    train_run_dir = train_run_root / "smoke_train"
++    validate_train_artifacts(train_run_dir)
++
++    predict_cfg = load_config(repo_root / "configs/fp/predict_fixture.yaml")
++    predict_cfg["model_artifact_dir"] = str(train_run_dir)
++    predict_cfg["output"]["out_dir"] = str(tmp_path / "runs" / "predict")
++    predict_cfg["output"]["exp_name"] = "smoke_predict"
++
++    predict_cfg_path = tmp_path / "predict_smoke.yaml"
++    dump_yaml(predict_cfg_path, predict_cfg)
++
++    subprocess.run(
++        [
++            sys.executable,
++            str(repo_root / "scripts/predict.py"),
++            "--config",
++            str(predict_cfg_path),
++            "--query",
++            "64-17-5",
++        ],
++        check=True,
++        cwd=repo_root,
++    )
++
++    predict_run_dir = Path(predict_cfg["output"]["out_dir"]) / "smoke_predict"
++    validate_predict_artifacts(predict_run_dir)
+
+
+thinking
+**Verifying relevant git changes**
+exec
+/bin/zsh -lc 'git diff -- tests/integration/test_smoke_fp_train_predict.py work/queue.json' in /Users/kawahito/Desktop/LJ_prediction succeeded in 264ms:
+
+file update:
+diff --git a/tests/integration/test_smoke_fp_train_predict.py b/tests/integration/test_smoke_fp_train_predict.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..04a8b8b51073ab4e2af8592f2cd0a952a61c62aa
+--- /dev/null
++++ b/tests/integration/test_smoke_fp_train_predict.py
+@@ -0,0 +1,65 @@
++from __future__ import annotations
++
++import subprocess
++import sys
++from pathlib import Path
++
++import pytest
++
++from src.common.config import dump_yaml, load_config
++from src.utils.artifacts import validate_predict_artifacts, validate_train_artifacts
++
++
++def test_smoke_fp_train_predict(tmp_path: Path) -> None:
++    pytest.importorskip("rdkit")
++    pytest.importorskip("sklearn")
++
++    repo_root = Path(__file__).resolve().parents[2]
++
++    train_cfg = load_config(repo_root / "configs/fp/train_fixture.yaml")
++    train_run_root = tmp_path / "runs" / "train" / "fp"
++    train_cfg["output"]["run_dir"] = str(train_run_root)
++    train_cfg["output"]["exp_name"] = "smoke_train"
++    train_cfg["output"]["plots"] = False
++    train_cfg.setdefault("data", {})["cache_dir"] = str(tmp_path / "cache")
++
++    train_cfg_path = tmp_path / "train_smoke.yaml"
++    dump_yaml(train_cfg_path, train_cfg)
++
++    subprocess.run(
++        [
++            sys.executable,
++            str(repo_root / "scripts/train.py"),
++            "--config",
++            str(train_cfg_path),
++        ],
++        check=True,
++        cwd=repo_root,
++    )
++
++    train_run_dir = train_run_root / "smoke_train"
++    validate_train_artifacts(train_run_dir)
++
++    predict_cfg = load_config(repo_root / "configs/fp/predict_fixture.yaml")
++    predict_cfg["model_artifact_dir"] = str(train_run_dir)
++    predict_cfg["output"]["out_dir"] = str(tmp_path / "runs" / "predict")
++    predict_cfg["output"]["exp_name"] = "smoke_predict"
++
++    predict_cfg_path = tmp_path / "predict_smoke.yaml"
++    dump_yaml(predict_cfg_path, predict_cfg)
++
++    subprocess.run(
++        [
++            sys.executable,
++            str(repo_root / "scripts/predict.py"),
++            "--config",
++            str(predict_cfg_path),
++            "--query",
++            "64-17-5",
++        ],
++        check=True,
++        cwd=repo_root,
++    )
++
++    predict_run_dir = Path(predict_cfg["output"]["out_dir"]) / "smoke_predict"
++    validate_predict_artifacts(predict_run_dir)
+
+
+thinking
+**Checking git diff behavior with tracked and untracked files**
+exec
+/bin/zsh -lc 'git diff -- work/queue.json' in /Users/kawahito/Desktop/LJ_prediction succeeded in 276ms:
+
+file update:
+diff --git a/tests/integration/test_smoke_fp_train_predict.py b/tests/integration/test_smoke_fp_train_predict.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..04a8b8b51073ab4e2af8592f2cd0a952a61c62aa
+--- /dev/null
++++ b/tests/integration/test_smoke_fp_train_predict.py
+@@ -0,0 +1,65 @@
++from __future__ import annotations
++
++import subprocess
++import sys
++from pathlib import Path
++
++import pytest
++
++from src.common.config import dump_yaml, load_config
++from src.utils.artifacts import validate_predict_artifacts, validate_train_artifacts
++
++
++def test_smoke_fp_train_predict(tmp_path: Path) -> None:
++    pytest.importorskip("rdkit")
++    pytest.importorskip("sklearn")
++
++    repo_root = Path(__file__).resolve().parents[2]
++
++    train_cfg = load_config(repo_root / "configs/fp/train_fixture.yaml")
++    train_run_root = tmp_path / "runs" / "train" / "fp"
++    train_cfg["output"]["run_dir"] = str(train_run_root)
++    train_cfg["output"]["exp_name"] = "smoke_train"
++    train_cfg["output"]["plots"] = False
++    train_cfg.setdefault("data", {})["cache_dir"] = str(tmp_path / "cache")
++
++    train_cfg_path = tmp_path / "train_smoke.yaml"
++    dump_yaml(train_cfg_path, train_cfg)
++
++    subprocess.run(
++        [
++            sys.executable,
++            str(repo_root / "scripts/train.py"),
++            "--config",
++            str(train_cfg_path),
++        ],
++        check=True,
++        cwd=repo_root,
++    )
++
++    train_run_dir = train_run_root / "smoke_train"
++    validate_train_artifacts(train_run_dir)
++
++    predict_cfg = load_config(repo_root / "configs/fp/predict_fixture.yaml")
++    predict_cfg["model_artifact_dir"] = str(train_run_dir)
++    predict_cfg["output"]["out_dir"] = str(tmp_path / "runs" / "predict")
++    predict_cfg["output"]["exp_name"] = "smoke_predict"
++
++    predict_cfg_path = tmp_path / "predict_smoke.yaml"
++    dump_yaml(predict_cfg_path, predict_cfg)
++
++    subprocess.run(
++        [
++            sys.executable,
++            str(repo_root / "scripts/predict.py"),
++            "--config",
++            str(predict_cfg_path),
++            "--query",
++            "64-17-5",
++        ],
++        check=True,
++        cwd=repo_root,
++    )
++
++    predict_run_dir = Path(predict_cfg["output"]["out_dir"]) / "smoke_predict"
++    validate_predict_artifacts(predict_run_dir)
+
+
+thinking
+**Preparing final response with file changes and verification**
+
+I'll organize all details about the added integration smoke test for FP train/predict, include relevant file changes with a diff snippet for clarity, highlight the test results from pytest, note no compatibility impact, and confirm the update to the task status in `work/queue.json`. This will cover change plans, implementation, test info, verification commands, compatibility, and queue updates clearly and concisely.
+codex
+Using skill S95_tests_ci to add pytest smoke coverage for task 090.
+
+Added a CLI-level FP train/predict smoke test using fixture configs and artifact validation, and marked the task done in `work/queue.json`.
+
+**Change Plan**
+- `tests/integration/test_smoke_fp_train_predict.py`: add FP train/predict CLI smoke test with fixture config + artifact validation.
+- `work/queue.json`: set task 090 status to done after verification.
+
+**Implementation**
+```diff
++++ tests/integration/test_smoke_fp_train_predict.py
++def test_smoke_fp_train_predict(tmp_path: Path) -> None:
++    pytest.importorskip("rdkit")
++    pytest.importorskip("sklearn")
++    ...
++    subprocess.run([sys.executable, "scripts/train.py", "--config", ...], check=True)
++    validate_train_artifacts(...)
++    subprocess.run([sys.executable, "scripts/predict.py", "--config", ..., "--query", "64-17-5"], check=True)
++    validate_predict_artifacts(...)
+```
+
+**Tests Added/Updated**
+- `tests/integration/test_smoke_fp_train_predict.py`
+
+**Verification**
+- `pytest -q` (16 passed)
+
+**Compatibility Impact**
+- config/CLI/artifact: none; test-only changes.
+
+**Queue**
+- `work/queue.json`: task 090 marked done.
+
+Next step (optional):
+1) Add a GitHub Actions workflow to run `pytest -q` on push/PR.
+file update:
+diff --git a/tests/integration/test_smoke_fp_train_predict.py b/tests/integration/test_smoke_fp_train_predict.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..04a8b8b51073ab4e2af8592f2cd0a952a61c62aa
+--- /dev/null
++++ b/tests/integration/test_smoke_fp_train_predict.py
+@@ -0,0 +1,65 @@
++from __future__ import annotations
++
++import subprocess
++import sys
++from pathlib import Path
++
++import pytest
++
++from src.common.config import dump_yaml, load_config
++from src.utils.artifacts import validate_predict_artifacts, validate_train_artifacts
++
++
++def test_smoke_fp_train_predict(tmp_path: Path) -> None:
++    pytest.importorskip("rdkit")
++    pytest.importorskip("sklearn")
++
++    repo_root = Path(__file__).resolve().parents[2]
++
++    train_cfg = load_config(repo_root / "configs/fp/train_fixture.yaml")
++    train_run_root = tmp_path / "runs" / "train" / "fp"
++    train_cfg["output"]["run_dir"] = str(train_run_root)
++    train_cfg["output"]["exp_name"] = "smoke_train"
++    train_cfg["output"]["plots"] = False
++    train_cfg.setdefault("data", {})["cache_dir"] = str(tmp_path / "cache")
++
++    train_cfg_path = tmp_path / "train_smoke.yaml"
++    dump_yaml(train_cfg_path, train_cfg)
++
++    subprocess.run(
++        [
++            sys.executable,
++            str(repo_root / "scripts/train.py"),
++            "--config",
++            str(train_cfg_path),
++        ],
++        check=True,
++        cwd=repo_root,
++    )
++
++    train_run_dir = train_run_root / "smoke_train"
++    validate_train_artifacts(train_run_dir)
++
++    predict_cfg = load_config(repo_root / "configs/fp/predict_fixture.yaml")
++    predict_cfg["model_artifact_dir"] = str(train_run_dir)
++    predict_cfg["output"]["out_dir"] = str(tmp_path / "runs" / "predict")
++    predict_cfg["output"]["exp_name"] = "smoke_predict"
++
++    predict_cfg_path = tmp_path / "predict_smoke.yaml"
++    dump_yaml(predict_cfg_path, predict_cfg)
++
++    subprocess.run(
++        [
++            sys.executable,
++            str(repo_root / "scripts/predict.py"),
++            "--config",
++            str(predict_cfg_path),
++            "--query",
++            "64-17-5",
++        ],
++        check=True,
++        cwd=repo_root,
++    )
++
++    predict_run_dir = Path(predict_cfg["output"]["out_dir"]) / "smoke_predict"
++    validate_predict_artifacts(predict_run_dir)
+
+tokens used
+75,007

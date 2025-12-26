@@ -1,0 +1,30 @@
+Using S90_artifacts_versioning and S95_tests_ci to align artifact contract and test requirements.
+
+**Status**
+- **Blocked** `work/tasks/020_artifact_contract_impl.md` explicitly marks this task blocked until 010/015 complete, so I’m not proceeding with implementation.
+- **Note** `work/queue.json` shows 010/015 as `done`, so the block condition may already be satisfied but the task file hasn’t been updated.
+
+**Change Plan (Once Unblocked)**
+- `src/utils/artifacts.py` add shared artifact save/load helpers aligned with `docs/04_ARTIFACTS_AND_VERSIONING.md`.
+- `scripts/train.py` save `config.yaml`, `meta.json`, `metrics.json`, `model/model.ckpt`, and any preprocess/featurizer state.
+- `scripts/predict.py` save `predictions.csv` and `meta.json` with `model_version` and required keys.
+- `tests/contract/` add contract tests for required files/keys.
+
+**Implementation**
+- No changes made (blocked).
+
+**Tests**
+- None added or run (blocked).
+
+**Verification**
+- None run (blocked).
+
+**Compatibility Impact**
+- None yet; changes would add artifact outputs and contract enforcement once unblocked.
+
+**Queue Update**
+- Needs `work/queue.json` task 020 status set to `blocked` with the reason from the task file; I can’t edit due to read‑only sandbox.
+
+Next steps:
+1) Confirm I should proceed now that 010/015 are done and (if so) update `work/tasks/020_artifact_contract_impl.md` to remove the block.
+2) Allow write access so I can update `work/queue.json` and implement the task.

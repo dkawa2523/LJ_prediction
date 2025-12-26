@@ -1,0 +1,66 @@
+TaskSpecベースでターゲット/メトリクス/ロス解決を導入し、train/evaluate/auditに反映、lj_sigmaタスクとテストを追加しました。  
+Using skills S20_dataset_loader (target column resolution/audit), S60_trainer_loop (loss/metrics wiring), S95_tests_ci (tests).
+
+**変更計画**
+- `src/tasks/spec.py`, `src/tasks/__init__.py`: Task I/F（target_columns/metrics/loss）追加
+- `src/fp/train.py`, `src/fp/evaluate.py`, `src/gnn/train.py`, `src/gnn/evaluate.py`, `src/data/audit.py`, `src/utils/validate_config.py`: TaskSpec 利用へ切替
+- `configs/task/lj_epsilon.yaml`, `configs/task/lj_sigma.yaml`: タスク定義更新/追加
+- `tests/test_tasks.py`: 解決ロジックのユニットテスト追加
+- `work/queue.json`: task 040 を done に更新
+
+**実装（差分が分かるように）**
+- `src/tasks/spec.py`:
+```diff
++def resolve_target_columns(cfg: Dict[str, Any]) -> List[str]:
++    ...
++def _resolve_metrics_fn(metrics_cfg: Any, task_type: str) -> MetricsFn:
++    ...
++@dataclass(frozen=True)
++class TaskSpec:
++    ...
++def resolve_task(cfg: Dict[str, Any]) -> TaskSpec:
++    ...
+```
+- `src/fp/train.py` / `src/gnn/train.py`（evaluate も同様）:
+```diff
++from src.tasks import resolve_task
+-    target_col = str(...)
++    task_spec = resolve_task(cfg)
++    target_col = task_spec.primary_target()
++    if target_col is None:
++        raise ValueError("No target column resolved from task/data config.")
+-    metrics_val = regression_metrics(...)
++    metrics_val = task_spec.metrics_fn(...)
+```
+- `configs/task/lj_sigma.yaml`:
+```diff
++task:
++  name: "lj_sigma"
++  type: "regression"
++  target_columns:
++    - "lj_sigma_A"
++  metrics: "regression"
++  target_col: "lj_sigma_A"
++data:
++  target_col: "lj_sigma_A"
+```
+
+**追加/更新したテスト**
+- `tests/test_tasks.py`（resolve_target_columns priority / metrics filtering / loss precedence）
+- 実行済み: `pytest -q tests/test_tasks.py`（3 passed）
+
+**検証コマンド**
+- `pytest -q tests/test_tasks.py`
+
+**互換性影響（config/CLI/artifact）**
+- config: `task.target_columns`/`task.metrics` を新規対応、既存 `task.target_col`/`data.target_col` は継続サポート
+- CLI: 変更なし、`task=lj_sigma` が追加で利用可能
+- artifact: `metrics.json`/`meta.json` 形式は変更なし（metrics内容は `task.metrics` に準拠）
+
+**キュー更新**
+- `work/queue.json` の task `040` を `done` に更新済み
+
+**次のステップ**
+1) `python scripts/train.py --config configs/fp/train_quick.yaml task=lj_sigma`
+2) `python scripts/train.py --config configs/gnn/train_quick.yaml task=lj_sigma`
+3) `python scripts/evaluate.py --config configs/fp/evaluate_quick.yaml task=lj_sigma`

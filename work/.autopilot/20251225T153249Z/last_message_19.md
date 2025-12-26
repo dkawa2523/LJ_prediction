@@ -1,0 +1,27 @@
+Using S90_artifacts_versioning + S95_tests_ci because this task is about artifact contracts and contract tests.  
+I can’t proceed with implementation yet: `work/tasks/020_artifact_contract_impl.md` still marks the task as blocked. `work/queue.json` shows 010/015 are done, so if the run dir standard is now fixed, the task file needs to be updated first. This session is also read‑only, so I can’t edit files or update `work/queue.json` myself.
+
+**Change Plan**
+- `src/utils/artifacts.py`: add helpers to compute `config_hash`/`dataset_hash`, write `config.yaml`, `meta.json`, `metrics.json`, `predictions.csv`, and save model artifacts under `model/` with `model.ckpt` plus preprocess/featurizer state.
+- `src/fp/train.py`, `src/gnn/train.py`: use artifact helpers to emit the contract outputs and required meta keys.
+- `src/fp/predict.py`, `src/gnn/predict.py`: write `predictions.csv` with required columns and meta fields including `model_version`/`model_name`.
+- `tests/contract/test_artifacts.py`: add contract tests for required files/keys/columns.
+
+**Implementation**
+- Blocked; no changes made (task file still blocked + read‑only sandbox).
+
+**Tests Added/Updated**
+- None (blocked).
+
+**Verification Commands**
+- `pytest tests/contract -q` (after implementation).
+
+**Compatibility Impact**
+- None yet. Planned changes will adjust artifact file names/paths to match `docs/04` (e.g., `model/`, `model.ckpt`, `metrics.json`, `predictions.csv`, and meta required keys).
+
+**Queue Status**
+- Should be set to `blocked` in `work/queue.json` with the reason above. I couldn’t update `work/queue.json` due to the read‑only sandbox.
+
+Next steps (pick one):
+1) Update `work/tasks/020_artifact_contract_impl.md` to remove/adjust the Blocked section now that 010/015 are done.
+2) Re‑run with write access so I can implement and update `work/queue.json` appropriately.

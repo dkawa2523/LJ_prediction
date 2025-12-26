@@ -1,0 +1,27 @@
+Using S90_artifacts_versioning + S95_tests_ci to align artifact contract and contract tests.
+
+**Status**
+- `work/tasks/020_artifact_contract_impl.md` marks this task blocked pending 010/015; per contract I’m not implementing changes yet.
+- `work/queue.json` shows 010/015 as done; this conflicts with the task file—please confirm how to proceed.
+
+**Change Plan (File-Level)**
+- Blocked: no edits until unblocked. If you want me to proceed, I’ll target `src/utils/artifacts.py`, `scripts/train.py`, `scripts/predict.py`, and `tests/contract/`.
+
+**Implementation (Diff)**
+- None; no code changes while blocked.
+
+**Tests Added/Updated**
+- None.
+
+**Verification Commands**
+- None.
+
+**Compatibility Impact**
+- None (no changes).
+
+**Queue Status**
+- I couldn’t update `work/queue.json` because the session is read-only and approvals are disabled.
+
+Next steps:
+1) Confirm you want me to proceed despite the block in the task file.  
+2) Update the task file/queue to unblock and rerun with write access.

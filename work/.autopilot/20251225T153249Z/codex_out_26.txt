@@ -1,0 +1,17 @@
+Using skills: S90_artifacts_versioning, S95_tests_ci (artifact contract + contract test scope).
+
+**Status**
+- Task 020 is blocked per `work/tasks/020_artifact_contract_impl.md` because the output dir/Process naming is not finalized; I did not implement changes.
+- `work/queue.json` shows 010/015 as done, which conflicts with the task’s Blocked note; please confirm whether the block is resolved and update the task file if so.
+
+**Output Requirements**
+- **Change Plan**: Blocked; no file changes planned until `work/tasks/020_artifact_contract_impl.md` is unblocked.
+- **Implementation**: None (no diff).
+- **Tests**: None added/updated.
+- **Verification**: Not run.
+- **Compatibility**: No impact (no changes).
+- **Queue Update**: Should set task 020 status to `blocked` with the reason from `work/tasks/020_artifact_contract_impl.md` in `work/queue.json`, but I cannot edit files in read-only mode with approval_policy=never.
+
+Next steps (pick one):
+1) Update `work/tasks/020_artifact_contract_impl.md` to remove the Blocked section (or confirm it’s resolved), and I’ll proceed.  
+2) Update `work/queue.json` to mark task 020 as `blocked`, and I’ll wait.

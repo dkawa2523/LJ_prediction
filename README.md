@@ -30,17 +30,18 @@ configs/
   gnn/train.yaml
   gnn/predict.yaml
 runs/
-  fp/<exp_name>/
-  gnn/<exp_name>/
+  train/fp/<exp_name>/
+  train/gnn/<exp_name>/
+  evaluate/<exp_name>/
   predict/<exp_name>/
+  visualize/<exp_name>/
 src/
   common/                 # LJ計算、選別、split、ADなど
   fp/                     # Fingerprint学習/推論
   gnn/                    # GNN学習/推論
 scripts/
   build_dataset.py
-  fp_train.py / fp_predict.py
-  gnn_train.py / gnn_predict.py
+  train.py / evaluate.py / predict.py / visualize.py
 ```
 
 ---
@@ -104,20 +105,20 @@ python3 scripts/build_dataset.py --config configs/dataset.yaml
 
 ### Step 2: 学習2（Fingerprint）
 ```bash
-python3 scripts/fp_train.py --config configs/fp/train.yaml
+python3 scripts/train.py --config configs/fp/train.yaml
 ```
 
 - 出力：
-  - `runs/fp/<exp_name>/artifacts/model.pkl`
-  - `runs/fp/<exp_name>/artifacts/imputer.pkl`（欠損対策）
-  - `runs/fp/<exp_name>/artifacts/ad.pkl`（外挿診断用）
-  - `runs/fp/<exp_name>/plots/*.png`（Parity/Residual/学習曲線等）
+  - `runs/train/fp/<exp_name>/artifacts/model.pkl`
+  - `runs/train/fp/<exp_name>/artifacts/imputer.pkl`（欠損対策）
+  - `runs/train/fp/<exp_name>/artifacts/ad.pkl`（外挿診断用）
+  - `runs/train/fp/<exp_name>/plots/*.png`（Parity/Residual/学習曲線等）
 
 ### Step 3: 推論（Fingerprint）
 ```bash
-python3 scripts/fp_predict.py --config configs/fp/predict.yaml --query C6H6
+python3 scripts/predict.py --config configs/fp/predict.yaml --query C6H6
 # または
-python3 scripts/fp_predict.py --config configs/fp/predict.yaml --query 71-43-2
+python3 scripts/predict.py --config configs/fp/predict.yaml --query 71-43-2
 ```
 
 - 推論時に以下を表示します：
@@ -128,12 +129,12 @@ python3 scripts/fp_predict.py --config configs/fp/predict.yaml --query 71-43-2
 
 ### Step 4: 学習1（GNN: PyTorch Geometric）
 ```bash
-python3 scripts/gnn_train.py --config configs/gnn/train.yaml
+python3 scripts/train.py --config configs/gnn/train.yaml
 ```
 
 ### Step 5: 推論（GNN）
 ```bash
-python3 scripts/gnn_predict.py --config configs/gnn/predict.yaml --query C6H6
+python3 scripts/predict.py --config configs/gnn/predict.yaml --query C6H6
 ```
 
 ---
@@ -192,3 +193,27 @@ python3 scripts/gnn_predict.py --config configs/gnn/predict.yaml --query C6H6
 
 - **設定スナップショット**は各`run_dir`に保存しています（再現性）
 - Fingerprint学習は `data/processed/cache/fp/` に特徴量キャッシュを作ります（同設定なら再利用）
+
+---
+
+## 10) 開発フロー（devkit）
+
+- 不変条件/契約は `docs/00_INVARIANTS.md` と `docs/README.md` を起点に確認
+- タスク運用は `work/tasks/` と `work/queue.json`（一覧は `work/BACKLOG.md`）
+- Codex向け運用は `codex/README.md` と `codex/SESSION_CONTEXT.md`
+- Skills と現状マップは `agentskills/README.md` と `work/REPO_ORIENTATION.md`
+
+---
+
+## 11) Fixture dataset（smoke用）
+
+最小データでの smoke 実行は以下を使用します：
+- CSV: `tests/fixtures/data/raw/tc_pc_tb_fixture.csv`
+- SDF: `tests/fixtures/data/raw/sdf_files/`
+
+例：
+```bash
+python scripts/build_dataset.py --config configs/dataset_fixture.yaml
+python scripts/train.py --config configs/fp/train_fixture.yaml
+python scripts/audit_dataset.py --config configs/audit_dataset_fixture.yaml
+```

@@ -1,0 +1,11 @@
+Using S90_artifacts_versioning and S95_tests_ci to verify audit artifact/meta handling and test coverage; skipping S20_dataset_loader and S70_evaluator_metrics because no loader mapping or evaluation metric changes.
+
+Validated the dataset audit changes with the targeted pytest run and refreshed task 025 queue timestamps in `work/queue.json`.
+
+- Updated `work/queue.json` with new `updated_at` and task 025 `last_presented_at`.
+
+Tests:
+- `pytest -q tests/test_audit_dataset.py` (passed, 1 test)
+
+Next steps:
+1) `python scripts/audit_dataset.py --config configs/audit_dataset_fixture.yaml` to regenerate audit artifacts.

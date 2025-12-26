@@ -1,0 +1,25 @@
+Using S90_artifacts_versioning and S95_tests_ci to confirm artifact/test requirements.
+
+No code changes; task 020 is blocked per `work/tasks/020_artifact_contract_impl.md` (output dir standardization not fixed yet), and this session is read-only so I can’t update files like `work/queue.json`.
+
+**Change Plan**
+- Blocked. If unblocked, plan to edit `src/utils/artifacts.py`, `scripts/train.py`, `scripts/predict.py`, and add tests under `tests/contract/`.
+
+**Implementation**
+- No changes (blocked + read-only).
+
+**Tests**
+- Not run.
+
+**Verification Command**
+- `pytest -q tests/contract` (once unblocked).
+
+**Compatibility Impact**
+- None (no changes).
+
+**work/queue.json**
+- Not updated due to read-only; current `work/queue.json` shows task 020 as `in_progress`.
+
+Next steps:
+1) Confirm whether 010/015 are truly complete and update `work/tasks/020_artifact_contract_impl.md` to remove the Blocked section (or clarify the remaining blocker).
+2) Re-run this task with write permissions so I can implement the artifacts + contract tests and update `work/queue.json`.

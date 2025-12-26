@@ -1,0 +1,9 @@
+featurizer:
+  fingerprint: "morgan"
+  morgan_radius: 2
+  n_bits: 512
+  use_counts: false
+  add_descriptors: []
+
+data:
+  cache_dir: "tests/fixtures/data/processed/cache/fp"

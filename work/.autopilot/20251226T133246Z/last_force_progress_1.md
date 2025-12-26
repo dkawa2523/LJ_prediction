@@ -1,0 +1,11 @@
+Marked Task 020 as verified by checking the acceptance criteria and recording the contract test run, and refreshed the queue metadata to reflect the latest update in `work/tasks/020_artifact_contract_impl.md` and `work/queue.json`. This keeps the task state consistent with the completed artifact contract implementation and verification.
+
+- Checked the acceptance criteria and added a verification note in `work/tasks/020_artifact_contract_impl.md`.
+- Updated the `updated_at` timestamp in `work/queue.json` to reflect this change.
+
+Tests run:
+- `pytest tests/contract/test_artifacts_contract.py` (pass)
+
+Next steps (optional):
+1) Run a full train → predict → evaluate flow to confirm on-disk artifact layout under `runs/`.
+2) If you want, I can also run the broader test suite or a smoke set.

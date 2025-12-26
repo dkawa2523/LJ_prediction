@@ -1,0 +1,26 @@
+Using S90_artifacts_versioning and S95_tests_ci to stay aligned with the artifact contract and required tests.
+
+No changes made because `work/tasks/020_artifact_contract_impl.md` marks the task as blocked pending 010/015 output-dir standardization, and the session is read-only so I can’t update task state files.
+
+**Change Plan (File-Level)**
+- `src/utils/artifacts.py`: add shared artifact save helpers once unblocked.
+- `scripts/train.py`: write `config.yaml`, `meta.json`, `metrics.json`, `model/model.ckpt`.
+- `scripts/predict.py`: write `predictions.csv` and meta with model version.
+- `tests/contract/`: add artifact contract tests for required files/keys.
+
+**Implementation**
+- No diff; task remains blocked per `work/tasks/020_artifact_contract_impl.md`.
+
+**Tests**
+- None added or updated.
+
+**Verification**
+- Not run (no changes). Suggested after implementation: `pytest -q tests/contract`.
+
+**Compatibility Impact**
+- None yet. Planned changes will enforce artifact outputs per `docs/04_ARTIFACTS_AND_VERSIONING.md`.
+
+**Queue Status Update**
+- Unable to update `work/queue.json` due to read-only mode. Please set task `020` to `blocked` with the reason from `work/tasks/020_artifact_contract_impl.md`, or confirm the block is lifted and update the task file so I can proceed.
+
+If 010/015 are truly finalized (queue shows done), please confirm and I’ll proceed with the implementation.

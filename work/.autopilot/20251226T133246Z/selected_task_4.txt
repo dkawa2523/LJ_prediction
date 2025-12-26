@@ -1,0 +1,2 @@
+selected_task=035
+same_task_streak=1

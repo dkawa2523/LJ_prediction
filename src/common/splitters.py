@@ -1,14 +1,14 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
 
 from .chemistry import murcko_scaffold_smiles
 from .io import load_sdf_mol, sdf_path_from_cas
+from .utils import save_json
 
 
 def random_split(
@@ -18,7 +18,7 @@ def random_split(
 ) -> Dict[str, List[int]]:
     assert abs(sum(ratios) - 1.0) < 1e-6, "ratios must sum to 1.0"
     rng = np.random.default_rng(seed)
-    idx = df.index.to_numpy()
+    idx = df.index.to_numpy().copy()
     rng.shuffle(idx)
     n = len(idx)
     if n == 0:
@@ -51,6 +51,86 @@ def random_split(
     return {"train": train_idx.tolist(), "val": val_idx.tolist(), "test": test_idx.tolist()}
 
 
+def _normalize_group_key(value: object, row_idx: int) -> str:
+    if value is None:
+        return f"__missing__{row_idx}"
+    if isinstance(value, float) and np.isnan(value):
+        return f"__missing__{row_idx}"
+    text = str(value).strip()
+    if not text or text.lower() in {"nan", "none"}:
+        return f"__missing__{row_idx}"
+    return text
+
+
+def build_group_map(df: pd.DataFrame, group_col: str) -> Dict[int, str]:
+    group_map: Dict[int, str] = {}
+    for row_idx, value in zip(df.index.tolist(), df[group_col].tolist()):
+        group_map[row_idx] = _normalize_group_key(value, row_idx)
+    return group_map
+
+
+def _split_groups_by_count(
+    groups: Iterable[List[int]],
+    ratios: Sequence[float],
+    seed: int,
+) -> Dict[str, List[int]]:
+    assert len(ratios) == 3, "ratios must be a 3-length sequence"
+    assert abs(sum(ratios) - 1.0) < 1e-6, "ratios must sum to 1.0"
+    rng = np.random.default_rng(seed)
+
+    group_list = [list(g) for g in groups if g]
+    if not group_list:
+        return {"train": [], "val": [], "test": []}
+
+    group_list.sort(key=len, reverse=True)
+    rng.shuffle(group_list)
+
+    n_total = sum(len(g) for g in group_list)
+    n_train = int(ratios[0] * n_total)
+    n_val = int(ratios[1] * n_total)
+
+    train, val, test = [], [], []
+    for g in group_list:
+        if len(train) + len(g) <= n_train:
+            train.extend(g)
+        elif len(val) + len(g) <= n_val:
+            val.extend(g)
+        else:
+            test.extend(g)
+    return {"train": train, "val": val, "test": test}
+
+
+def _validate_non_empty_splits(indices: Dict[str, List[int]], ratios: Sequence[float]) -> None:
+    for split_name, ratio in zip(["train", "val", "test"], ratios):
+        if ratio > 0 and len(indices.get(split_name, [])) == 0:
+            raise ValueError(f"Split '{split_name}' is empty. Adjust ratios or split method.")
+
+
+def group_split(
+    df: pd.DataFrame,
+    group_col: str,
+    ratios: Sequence[float] = (0.8, 0.1, 0.1),
+    seed: int = 42,
+) -> Dict[str, List[int]]:
+    """
+    Group-based split.
+
+    Rows sharing the same group key are kept in the same split to prevent leakage.
+    """
+    assert abs(sum(ratios) - 1.0) < 1e-6, "ratios must sum to 1.0"
+    if group_col not in df.columns:
+        raise ValueError(f"group_col not in dataframe: {group_col}")
+
+    groups: Dict[str, List[int]] = {}
+    group_map = build_group_map(df, group_col)
+    for row_idx, key in group_map.items():
+        groups.setdefault(key, []).append(row_idx)
+
+    indices = _split_groups_by_count(groups.values(), ratios=ratios, seed=seed)
+    _validate_non_empty_splits(indices, ratios)
+    return indices
+
+
 def scaffold_split(
     df: pd.DataFrame,
     sdf_dir: str | Path,
@@ -65,7 +145,6 @@ def scaffold_split(
     This helps reduce train-test leakage by placing similar scaffolds together.
     """
     assert abs(sum(ratios) - 1.0) < 1e-6, "ratios must sum to 1.0"
-    rng = np.random.default_rng(seed)
 
     scaffolds: Dict[str, List[int]] = {}
     for row_idx, cas in zip(df.index.tolist(), df[cas_col].astype(str).tolist()):
@@ -73,31 +152,70 @@ def scaffold_split(
         scaf = murcko_scaffold_smiles(mol) if mol is not None else ""
         scaffolds.setdefault(scaf, []).append(row_idx)
 
-    # Sort scaffold groups by size descending to pack large scaffolds first
-    groups = list(scaffolds.values())
-    groups.sort(key=len, reverse=True)
-    # Shuffle groups with same size for randomness
-    # (deterministic but not critical; we do a simple shuffle of entire list after stable sort)
-    rng.shuffle(groups)
+    indices = _split_groups_by_count(scaffolds.values(), ratios=ratios, seed=seed)
+    _validate_non_empty_splits(indices, ratios)
+    return indices
 
-    n_total = df.shape[0]
-    n_train = int(ratios[0] * n_total)
-    n_val = int(ratios[1] * n_total)
 
-    train, val, test = [], [], []
-    for g in groups:
-        if len(train) + len(g) <= n_train:
-            train.extend(g)
-        elif len(val) + len(g) <= n_val:
-            val.extend(g)
-        else:
-            test.extend(g)
+def validate_split_indices(indices: Dict[str, List[int]]) -> None:
+    seen = set()
+    duplicates = set()
+    for split_name, idxs in indices.items():
+        for idx in idxs:
+            if idx in seen:
+                duplicates.add(idx)
+            else:
+                seen.add(idx)
+    if duplicates:
+        dup_list = sorted(duplicates)
+        raise ValueError(f"Duplicate indices across splits: {dup_list[:5]}")
 
-    # Safety: if val is empty (can happen for extreme grouping), fallback to random split
-    if len(val) == 0 or len(test) == 0:
-        return random_split(df, ratios=ratios, seed=seed)
 
-    return {"train": train, "val": val, "test": test}
+def validate_group_leakage(indices: Dict[str, List[int]], group_map: Dict[int, str], label: str) -> None:
+    group_to_split: Dict[str, str] = {}
+    leakage: Dict[str, List[str]] = {}
+    for split_name, idxs in indices.items():
+        for idx in idxs:
+            group = group_map.get(idx, "")
+            prev = group_to_split.get(group)
+            if prev is None:
+                group_to_split[group] = split_name
+            elif prev != split_name:
+                leakage.setdefault(group, [prev]).append(split_name)
+    if leakage:
+        sample = list(leakage.items())[:3]
+        raise ValueError(f"{label} leakage across splits detected: {sample}")
+
+
+def validate_scaffold_split(
+    df: pd.DataFrame,
+    sdf_dir: str | Path,
+    cas_col: str,
+    indices: Dict[str, List[int]],
+) -> None:
+    scaffold_map: Dict[int, str] = {}
+    for row_idx, cas in zip(df.index.tolist(), df[cas_col].astype(str).tolist()):
+        mol = load_sdf_mol(sdf_path_from_cas(sdf_dir, cas))
+        scaf = murcko_scaffold_smiles(mol) if mol is not None else ""
+        scaffold_map[row_idx] = scaf
+    validate_group_leakage(indices, scaffold_map, label="scaffold")
+
+
+def save_split_json(
+    indices: Dict[str, List[int]],
+    out_path: str | Path,
+    metadata: Optional[Dict[str, object]] = None,
+) -> None:
+    payload = {
+        "indices": {
+            "train": indices.get("train", []),
+            "val": indices.get("val", []),
+            "test": indices.get("test", []),
+        }
+    }
+    if metadata:
+        payload.update(metadata)
+    save_json(out_path, payload)
 
 
 def save_split_indices(indices: Dict[str, List[int]], out_dir: str | Path) -> None:

@@ -1,0 +1,28 @@
+S90_artifacts_versioning と S95_tests_ci を使用しました（artifact 契約と contract test の基準確認のため）。
+
+Task 020 は `work/tasks/020_artifact_contract_impl.md` に Blocked が明記されているため、実装を進められません。`work/queue.json` は `in_progress` のままで矛盾しているので、まずタスクファイルの更新（blocked解除 or reason維持）をお願いします。
+
+**変更計画（ファイル単位）**
+- `src/utils/artifacts.py` に artifact 保存共通関数を追加（unblock後）
+- `scripts/train.py` に `config.yaml`/`meta.json`/`metrics.json`/`model.ckpt` 保存処理を追加（unblock後）
+- `scripts/predict.py` に `predictions.csv` と meta 更新処理を追加（unblock後）
+- `tests/contract/` に契約テスト（必須ファイル/必須キー検査）を追加（unblock後）
+
+**実装（差分が分かるように）**
+- 変更なし（blocked のため）
+
+**追加/更新したテスト**
+- なし
+
+**検証コマンド**
+- なし
+
+**互換性影響（config/CLI/artifact）**
+- 影響なし（未変更）
+
+**work/queue.json**
+- `work/queue.json` の task `020` を `blocked` に更新すべきですが、read-only のため変更できません。必要ならユーザー側で更新してください。
+
+次のステップ候補:
+1) `work/tasks/020_artifact_contract_impl.md` の Blocked を更新して再指示  
+2) 書き込み可能な環境で再実行して更新を依頼

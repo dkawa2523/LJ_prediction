@@ -1,0 +1,35 @@
+Using S90_artifacts_versioning + S95_tests_ci to align the artifact contract implementation and its contract tests.
+
+**Status**
+- `work/tasks/020_artifact_contract_impl.md` explicitly marks this task as blocked; per contract I did not change code.
+- `work/queue.json` shows 010/015 are done, so the task file’s blocked state is now inconsistent and needs confirmation before proceeding.
+- Sandbox is read-only with approval_policy=never, so I cannot edit any files (including `work/queue.json`) from here.
+
+**Change Plan (Once Unblocked)**
+- `src/utils/artifacts.py`: add artifact save helpers (config/meta/metrics/predictions, hash helpers).
+- `scripts/train.py`: write `config.yaml`, `meta.json`, `metrics.json`, and `model/model.ckpt` (plus preprocess/featurizer state if present).
+- `scripts/predict.py`: write `predictions.csv` and `meta.json` with `model_version`, `run_id`, `dataset_hash`.
+- `tests/contract/test_artifacts_contract.py`: add contract checks for required files/keys and `predictions.csv` columns.
+
+**Implementation (Diff)**
+- No changes applied; task is blocked by the task contract.
+
+**Tests**
+- None added/updated.
+
+**Verification**
+- Not run (no changes).
+
+**Compatibility Impact**
+- None (no changes).
+
+**Queue Update Needed**
+- Please set task 020 to blocked in `work/queue.json` (reason already in `work/tasks/020_artifact_contract_impl.md`). Suggested edit:
+```diff
+diff --git a/work/queue.json b/work/queue.json
+@@
+-      "status": "in_progress",
++      "status": "blocked",
+```
+
+If you want me to proceed now that 010/015 are done, can you confirm unblocking (and update `work/tasks/020_artifact_contract_impl.md` accordingly) and rerun with write access?

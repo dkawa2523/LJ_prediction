@@ -1,9 +1,14 @@
-model_artifact_dir: "runs/gnn/mpnn_desc_v1"
-dataset_csv: "data/processed/dataset_with_lj.csv"
+defaults:
+  - process: predict
+  - dataset: default
+  - infer: gnn_default
+  - hydra: default
+  - _self_
 
-input:
-  mode: "formula"   # formula / cas
+model_artifact_dir: "runs/train/gnn/mpnn_desc_v1"
+
+process:
+  backend: "gnn"
 
 output:
-  out_dir: "runs/predict"
   exp_name: "gnn_predict"

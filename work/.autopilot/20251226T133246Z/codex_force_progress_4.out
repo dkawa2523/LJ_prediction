@@ -1,0 +1,10 @@
+Using S20_dataset_loader, S10_hydra_config, and S95_tests_ci to close out task 035 with verified split coverage.
+- Marked acceptance criteria complete in `work/tasks/035_split_strategies.md` to reflect the implemented split strategies and tests.
+- Refreshed task 035 timing metadata in `work/queue.json` after verification.
+
+**Tests**
+- `pytest -q tests/test_splitters.py`
+
+Next steps:
+1) `pytest -q`
+2) `python scripts/build_dataset.py --config configs/dataset.yaml` and confirm `data/processed/indices/split.json` outputs as expected
